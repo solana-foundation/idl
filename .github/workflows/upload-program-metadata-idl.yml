@@ -1,0 +1,165 @@
+# Upload or update an IDL on the Solana Program Metadata Program (PMP).
+#
+# Manual run: Actions → "Upload IDL to Program Metadata" → Run workflow.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   PMP_UPLOAD_KEYPAIR — full Solana keypair JSON array (same format as ~/.config/solana/id.json).
+#                        This wallet signs as authority; it also pays fees unless you set PAYER_KEYPAIR.
+#   RPC_URL_MAINNET    — HTTPS RPC for mainnet-beta (workflow input "cluster").
+#   RPC_URL_TESTNET    — HTTPS RPC for testnet.
+#   RPC_URL_DEVNET     — HTTPS RPC for devnet.
+#   RPC_URL            — optional legacy fallback if the cluster-specific secret for the chosen cluster is empty.
+#
+# Optional secrets:
+#   PAYER_KEYPAIR      — if set, this keypair pays rent and fees while PMP_UPLOAD_KEYPAIR remains authority.
+#
+# Native programs and other cases without BPF upgrade authority require non-canonical metadata
+# (authority = your keypair). Set workflow input `non_canonical` to true (default).
+#
+# For programs you deploy, set `non_canonical` to false and use the program upgrade authority keypair.
+
+name: Upload IDL to Program Metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      program_id:
+        description: Program address (base58) this IDL describes
+        required: true
+        type: string
+      idl_url:
+        description: >-
+          Direct HTTPS URL to raw JSON (must not be an HTML page). Prefer
+          https://raw.githubusercontent.com/owner/repo/ref/path/idl.json — blob
+          links on github.com are rewritten automatically when possible.
+        required: true
+        type: string
+      cluster:
+        description: Solana cluster (selects which RPC_* secret is used)
+        required: true
+        type: choice
+        options:
+          - mainnet-beta
+          - testnet
+          - devnet
+        default: mainnet-beta
+      non_canonical:
+        description: Use non-canonical PMP account (required for native programs and third-party uploads)
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and validate IDL
+        env:
+          IDL_URL: ${{ inputs.idl_url }}
+        run: |
+          set -euo pipefail
+          url="$IDL_URL"
+          # github.com/.../blob/... -> raw.githubusercontent.com (avoids HTML file viewer)
+          if [[ "$url" =~ ^https://(www\.)?github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)$ ]]; then
+            path="${BASH_REMATCH[5]%%\?*}"
+            url="https://raw.githubusercontent.com/${BASH_REMATCH[2]}/${BASH_REMATCH[3]}/${BASH_REMATCH[4]}/${path}"
+            echo "Using raw URL: $url"
+          fi
+          curl -fsSL "$url" -o idl.json
+          node -e "
+            const fs = require('fs');
+            const s = fs.readFileSync('idl.json', 'utf8');
+            let t = s.trimStart();
+            if (t.charCodeAt(0) === 0xfeff) t = t.slice(1);
+            if (!t.startsWith('{') && !t.startsWith('[')) {
+              console.error('idl_url did not return JSON (likely an HTML page). Use a raw URL, e.g. https://raw.githubusercontent.com/<org>/<repo>/<ref>/<path>.json');
+              process.exit(1);
+            }
+            JSON.parse(s);
+          "
+
+      - name: Write signing keypair
+        env:
+          PMP_UPLOAD_KEYPAIR: ${{ secrets.PMP_UPLOAD_KEYPAIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PMP_UPLOAD_KEYPAIR:-}" ]; then
+            echo "Missing secret PMP_UPLOAD_KEYPAIR"
+            exit 1
+          fi
+          printf '%s' "$PMP_UPLOAD_KEYPAIR" > upload-keypair.json
+          node -e "
+            const fs = require('fs');
+            const s = fs.readFileSync('upload-keypair.json', 'utf8').trim();
+            let data;
+            try { data = JSON.parse(s); } catch {
+              console.error('PMP_UPLOAD_KEYPAIR is not valid JSON (wrong secret or HTML pasted). Use the full id.json array.');
+              process.exit(1);
+            }
+            if (!Array.isArray(data) || data.length < 64) {
+              console.error('PMP_UPLOAD_KEYPAIR must be a JSON array of 64 numbers (Solana keypair file).');
+              process.exit(1);
+            }
+          "
+
+      - name: Optional payer keypair
+        env:
+          PAYER_KEYPAIR: ${{ secrets.PAYER_KEYPAIR }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PAYER_KEYPAIR:-}" ]; then
+            printf '%s' "$PAYER_KEYPAIR" > payer-keypair.json
+            node -e "
+              const fs = require('fs');
+              const s = fs.readFileSync('payer-keypair.json', 'utf8').trim();
+              let data;
+              try { data = JSON.parse(s); } catch {
+                console.error('PAYER_KEYPAIR is not valid JSON.');
+                process.exit(1);
+              }
+              if (!Array.isArray(data) || data.length < 64) {
+                console.error('PAYER_KEYPAIR must be a JSON array of 64 numbers.');
+                process.exit(1);
+              }
+            "
+          fi
+
+      - name: Upload IDL via program-metadata CLI
+        env:
+          CLUSTER: ${{ inputs.cluster }}
+          RPC_URL_MAINNET: ${{ secrets.RPC_URL_MAINNET }}
+          RPC_URL_TESTNET: ${{ secrets.RPC_URL_TESTNET }}
+          RPC_URL_DEVNET: ${{ secrets.RPC_URL_DEVNET }}
+          RPC_URL_FALLBACK: ${{ secrets.RPC_URL }}
+          PROGRAM_ID: ${{ inputs.program_id }}
+          NON_CANONICAL: ${{ inputs.non_canonical }}
+        run: |
+          set -euo pipefail
+          case "${CLUSTER}" in
+            mainnet-beta) RPC_URL="${RPC_URL_MAINNET:-${RPC_URL_FALLBACK:-}}" ;;
+            testnet)      RPC_URL="${RPC_URL_TESTNET:-${RPC_URL_FALLBACK:-}}" ;;
+            devnet)       RPC_URL="${RPC_URL_DEVNET:-${RPC_URL_FALLBACK:-}}" ;;
+            *)
+              echo "Unknown cluster: ${CLUSTER}"
+              exit 1
+              ;;
+          esac
+          if [ -z "${RPC_URL:-}" ]; then
+            echo "No RPC URL for cluster ${CLUSTER}. Set secret RPC_URL_MAINNET, RPC_URL_TESTNET, or RPC_URL_DEVNET (or legacy RPC_URL)."
+            exit 1
+          fi
+          echo "Using RPC for cluster: ${CLUSTER}"
+          EXTRA=( )
+          case "${NON_CANONICAL}" in true|True) EXTRA+=( --non-canonical ) ;; esac
+          if [ -f payer-keypair.json ]; then
+            EXTRA+=( -p payer-keypair.json )
+          fi
+          npx --yes @solana-program/program-metadata@0.5.1 write idl "$PROGRAM_ID" idl.json \
+            -k upload-keypair.json \
+            --rpc "$RPC_URL" \
+            "${EXTRA[@]}"
+
+      - name: Remove key material
+        if: always()
+        run: |
+          rm -f upload-keypair.json payer-keypair.json idl.json

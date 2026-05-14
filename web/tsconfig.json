@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"],
+      "@core/*": ["../src/*"],
+      "@solana/kit": ["./node_modules/@solana/kit"],
+      "@solana/kit/*": ["./node_modules/@solana/kit/*"],
+      "@solana-program/program-metadata": ["./node_modules/@solana-program/program-metadata"],
+      "@solana-program/program-metadata/*": ["./node_modules/@solana-program/program-metadata/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../src/rpc.ts", "../src/anchor.ts", "../src/program-metadata.ts", "../src/current-idl.ts"],
+  "exclude": ["node_modules"]
+}
