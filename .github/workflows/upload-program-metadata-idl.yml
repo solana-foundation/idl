@@ -5,9 +5,9 @@
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   UPLOAD_KEYPAIR     — full Solana keypair JSON array (same format as ~/.config/solana/id.json).
 #                        This wallet signs as authority; it also pays fees unless you set PAYER_KEYPAIR.
-#   RPC_URL_MAINNET    — HTTPS RPC for mainnet-beta.
-#   RPC_URL_TESTNET    — HTTPS RPC for testnet.
-#   RPC_URL_DEVNET     — HTTPS RPC for devnet.
+#   RPC_MAINNET        — HTTPS RPC for mainnet-beta.
+#   RPC_TESTNET        — HTTPS RPC for testnet.
+#   RPC_DEVNET         — HTTPS RPC for devnet.
 #
 # Optional secrets:
 #   PAYER_KEYPAIR      — if set, this keypair pays rent and fees while UPLOAD_KEYPAIR remains authority.
@@ -145,23 +145,23 @@ jobs:
       - name: Upload IDL via program-metadata CLI
         env:
           CLUSTER: ${{ matrix.cluster }}
-          RPC_URL_MAINNET: ${{ secrets.RPC_URL_MAINNET }}
-          RPC_URL_TESTNET: ${{ secrets.RPC_URL_TESTNET }}
-          RPC_URL_DEVNET: ${{ secrets.RPC_URL_DEVNET }}
+          RPC_MAINNET: ${{ secrets.RPC_MAINNET }}
+          RPC_TESTNET: ${{ secrets.RPC_TESTNET }}
+          RPC_DEVNET: ${{ secrets.RPC_DEVNET }}
           PROGRAM_ID: ${{ inputs.program_id }}
         run: |
           set -euo pipefail
           case "${CLUSTER}" in
-            mainnet-beta) RPC_URL="${RPC_URL_MAINNET:-}" ;;
-            testnet)      RPC_URL="${RPC_URL_TESTNET:-}" ;;
-            devnet)       RPC_URL="${RPC_URL_DEVNET:-}" ;;
+            mainnet-beta) RPC_URL="${RPC_MAINNET:-}" ;;
+            testnet)      RPC_URL="${RPC_TESTNET:-}" ;;
+            devnet)       RPC_URL="${RPC_DEVNET:-}" ;;
             *)
               echo "Unknown cluster: ${CLUSTER}"
               exit 1
               ;;
           esac
           if [ -z "${RPC_URL:-}" ]; then
-            echo "Missing RPC URL for cluster ${CLUSTER}. Set the matching secret (RPC_URL_MAINNET, RPC_URL_TESTNET, or RPC_URL_DEVNET)."
+            echo "Missing RPC URL for cluster ${CLUSTER}. Set the matching secret (RPC_MAINNET, RPC_TESTNET, or RPC_DEVNET)."
             exit 1
           fi
           echo "Using RPC for cluster: ${CLUSTER}"
