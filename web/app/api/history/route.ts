@@ -3,6 +3,7 @@ import { Address, createSolanaRpc } from '@solana/kit';
 import { findMetadataPda } from '@solana-program/program-metadata';
 import { reconstructPmpHistory } from '@core/program-metadata';
 import { reconstructAnchorHistory, findAnchorIdlAddress } from '@core/anchor';
+import { buildPmpIdlLookups } from '@core/pmp-idl';
 import type { Snapshot } from '@core/rpc';
 
 export const maxDuration = 60;
@@ -78,18 +79,6 @@ function extractVersions(snapshots: Snapshot[], type: 'pmp' | 'anchor'): IdlVers
   });
 }
 
-async function hasSigs(rpc: ReturnType<typeof createSolanaRpc>, addr: Address): Promise<boolean> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sigs = await (rpc as any)
-      .getSignaturesForAddress(addr, { limit: 1 })
-      .send();
-    return sigs && sigs.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -107,39 +96,32 @@ export async function POST(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;
 
-    const [pmpPda] = await findMetadataPda({
+    const [canonicalPmpPda] = await findMetadataPda({
       program: addr,
       authority: null,
       seed: 'idl',
     });
     const anchorAddr = await findAnchorIdlAddress(addr);
+    const pmpLookups = await buildPmpIdlLookups(addr, 'idl');
+    let pmpPda = canonicalPmpPda;
+    let pmpVersions: IdlVersion[] = [];
 
-    const [hasPmp, hasAnchor] = await Promise.all([
-      hasSigs(rpc, pmpPda),
-      hasSigs(rpc, anchorAddr),
-    ]);
-
-    const tasks: Promise<IdlVersion[]>[] = [];
-
-    if (hasPmp) {
-      tasks.push(
-        reconstructPmpHistory(rpc, pmpPda)
-          .then((snaps) => extractVersions(snaps, 'pmp'))
-          .catch(() => []),
-      );
+    for (const lookup of pmpLookups) {
+      try {
+        const snaps = await reconstructPmpHistory(rpc, lookup.address);
+        if (snaps.length > 0) {
+          pmpVersions = extractVersions(snaps, 'pmp');
+          pmpPda = lookup.address;
+          break;
+        }
+      } catch {
+        /* try next lookup */
+      }
     }
 
-    if (hasAnchor) {
-      tasks.push(
-        reconstructAnchorHistory(rpc, addr)
-          .then((snaps) => extractVersions(snaps, 'anchor'))
-          .catch(() => []),
-      );
-    }
-
-    const results = await Promise.all(tasks);
-    const pmpVersions = results.find((_, i) => (hasPmp && i === 0))?.filter(v => v.type === 'pmp') ?? [];
-    const anchorVersions = results.flat().filter(v => v.type === 'anchor');
+    const anchorVersions = await reconstructAnchorHistory(rpc, addr)
+      .then((snaps) => extractVersions(snaps, 'anchor'))
+      .catch(() => [] as IdlVersion[]);
 
     return NextResponse.json({
       programId,

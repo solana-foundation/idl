@@ -1,10 +1,11 @@
 import type { Address } from '@solana/kit';
 import { createSolanaRpc } from '@solana/kit';
-import { fetchMetadataContent, type Seed } from '@solana-program/program-metadata';
+import type { Seed } from '@solana-program/program-metadata';
 import { inflate } from 'node:zlib';
 import { promisify } from 'node:util';
 
 import { findAnchorIdlAddress } from './anchor.js';
+import { fetchPmpIdlContentResolved } from './pmp-idl.js';
 import { readU32LE } from './rpc.js';
 
 const zlibInflate = promisify(inflate);
@@ -29,7 +30,7 @@ function parseIdlJson(content: string): unknown {
     }
 }
 
-async function fetchCurrentAnchorIdlString(
+export async function fetchCurrentAnchorIdlString(
     rpc: SolanaRpcClient,
     programId: Address,
 ): Promise<string | null> {
@@ -54,28 +55,9 @@ async function fetchCurrentAnchorIdlString(
     return decompressed.toString('utf8');
 }
 
-async function fetchCurrentPmpIdlString(
-    rpc: SolanaRpcClient,
-    programId: Address,
-    seed: Seed,
-    authority: Address | null | undefined,
-): Promise<string | null> {
-    try {
-        const content = await fetchMetadataContent(
-            rpc,
-            programId,
-            seed,
-            authority ?? null,
-        );
-        return content || null;
-    } catch {
-        return null;
-    }
-}
-
 /**
- * Resolve the live on-chain IDL the same way as `GET /api/idl`: try PMP first,
- * then Anchor. `idl` is JSON-parsed when possible, otherwise the raw string.
+ * Resolve the live on-chain IDL the same way as `GET /api/idl`: try PMP first
+ * (canonical PMP, then non-canonical via the IDL fallback authority), then Anchor.
  */
 export async function fetchCurrentIdlPreferPmp(
     rpc: SolanaRpcClient,
@@ -83,14 +65,18 @@ export async function fetchCurrentIdlPreferPmp(
     options?: { seed?: Seed; authority?: Address | null },
 ): Promise<CurrentIdlResponse | null> {
     const seed = options?.seed ?? 'idl';
-    const authority = options?.authority;
 
-    const pmpContent = await fetchCurrentPmpIdlString(rpc, programId, seed, authority);
-    if (pmpContent) {
+    const pmp = await fetchPmpIdlContentResolved(
+        rpc,
+        programId,
+        seed,
+        options?.authority,
+    );
+    if (pmp) {
         return {
             programId: programId as string,
             type: 'pmp',
-            idl: parseIdlJson(pmpContent),
+            idl: parseIdlJson(pmp.content),
         };
     }
 

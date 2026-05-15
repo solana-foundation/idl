@@ -20,6 +20,7 @@ import {
     reconstructAnchorHistory,
 } from './anchor.js';
 import { fetchCurrentIdlPreferPmp } from './current-idl.js';
+import { buildPmpIdlLookups } from './pmp-idl.js';
 import type { Snapshot } from './rpc.js';
 
 // ─── Display ─────────────────────────────────────────────────────────────────
@@ -275,20 +276,17 @@ async function detectIdlType(
     seed: string,
     authority?: Address,
 ): Promise<'pmp' | 'anchor'> {
-    const [anchorAddr, pmpAddr] = await Promise.all([
-        findAnchorIdlAddress(programAddress),
-        findPmpMetadataPda(programAddress, seed, authority),
-    ]);
+    const anchorAddr = await findAnchorIdlAddress(programAddress);
+    const pmpLookups = await buildPmpIdlLookups(programAddress, seed, authority);
 
-    const [anchorCount, pmpCount] = await Promise.all([
+    const [anchorCount, pmpCounts] = await Promise.all([
         countSigs(rpc, anchorAddr),
-        countSigs(rpc, pmpAddr),
+        Promise.all(pmpLookups.map((l) => countSigs(rpc, l.address))),
     ]);
+    const pmpHasSigs = pmpCounts.some((c) => c > 0);
 
-    if (anchorCount > 0 && pmpCount > 0) {
-        return 'anchor';
-    }
-    if (pmpCount > 0) return 'pmp';
+    if (anchorCount > 0 && pmpHasSigs) return 'anchor';
+    if (pmpHasSigs) return 'pmp';
     return 'anchor';
 }
 
@@ -304,8 +302,40 @@ async function runSingle(
     outputDir: string | undefined,
     dumpDir: string | undefined,
 ): Promise<void> {
-    let targetAddr: string;
-    if (idlType === 'pmp') {
+    let targetAddr: Address;
+    let pmpAuthority: Address | null | undefined = authority;
+    let snapshots: Snapshot[] | null = null;
+
+    if (idlType === 'pmp' && authority === undefined) {
+        // No explicit authority: try canonical, then the IDL fallback authority.
+        // Replay each lookup directly; first non-empty wins. (Same logic as /api/history.)
+        const pmpLookups = await buildPmpIdlLookups(addr, seed);
+        if (pmpLookups.length === 0) {
+            console.log(pc.yellow('No PMP metadata account found for this program.'));
+            return;
+        }
+        targetAddr = pmpLookups[0]!.address;
+        pmpAuthority = pmpLookups[0]!.authority;
+        snapshots = [];
+        let lastError: Error | null = null;
+        for (const lookup of pmpLookups) {
+            try {
+                const snaps = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, lookup.address);
+                if (snaps.length > 0) {
+                    targetAddr = lookup.address;
+                    pmpAuthority = lookup.authority;
+                    snapshots = snaps;
+                    break;
+                }
+            } catch (err) {
+                lastError = err as Error;
+            }
+        }
+        if (snapshots.length === 0 && lastError) {
+            console.error(pc.red(`[PMP] ${lastError.message ?? String(lastError)}`));
+            return;
+        }
+    } else if (idlType === 'pmp') {
         targetAddr = await findPmpMetadataPda(addr, seed, authority);
     } else {
         targetAddr = await findAnchorIdlAddress(addr);
@@ -315,22 +345,23 @@ async function runSingle(
     console.log(`  ${pc.dim('program:')}    ${addr}`);
     if (idlType === 'pmp') {
         console.log(`  ${pc.dim('seed:')}       ${seed}`);
-        if (authority) console.log(`  ${pc.dim('authority:')}  ${authority}`);
+        if (pmpAuthority) console.log(`  ${pc.dim('authority:')}  ${pmpAuthority}`);
     }
     console.log(`  ${pc.dim('idl acct:')}   ${targetAddr}`);
     console.log(`  ${pc.dim('rpc:')}        ${rpcUrl}`);
     console.log();
 
-    let snapshots: Snapshot[];
-    try {
-        if (idlType === 'pmp') {
-            snapshots = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, targetAddr as Address);
-        } else {
-            snapshots = await reconstructAnchorHistory(rpc as Rpc<SolanaRpcApi>, addr);
+    if (snapshots === null) {
+        try {
+            if (idlType === 'pmp') {
+                snapshots = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, targetAddr);
+            } else {
+                snapshots = await reconstructAnchorHistory(rpc as Rpc<SolanaRpcApi>, addr);
+            }
+        } catch (err) {
+            console.error(pc.red(`[${idlType.toUpperCase()}] ${(err as Error).message ?? String(err)}`));
+            return;
         }
-    } catch (err) {
-        console.error(pc.red(`[${idlType.toUpperCase()}] ${(err as Error).message ?? String(err)}`));
-        return;
     }
 
     if (snapshots.length === 0) {

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchMetadataContent, findMetadataPda } from '@solana-program/program-metadata';
+import { fetchCurrentAnchorIdlString } from '@core/current-idl';
 import { findAnchorIdlAddress } from '@core/anchor';
-import { inflate } from 'node:zlib';
-import { promisify } from 'node:util';
-
-const zlibInflate = promisify(inflate);
+import { fetchPmpIdlContentResolved } from '@core/pmp-idl';
+import { findMetadataPda } from '@solana-program/program-metadata';
 
 export const maxDuration = 30;
 
@@ -18,16 +16,6 @@ type IdlVersion = {
   activeTo: 'current';
   content: string;
 };
-
-function readU32LE(buf: Buffer, offset: number): number {
-  return (
-    (buf[offset] |
-      (buf[offset + 1] << 8) |
-      (buf[offset + 2] << 16) |
-      ((buf[offset + 3] << 24) >>> 0)) >>>
-    0
-  );
-}
 
 function extractVersion(content: string): string | null {
   try {
@@ -82,40 +70,6 @@ function buildVersion(
   };
 }
 
-async function fetchCurrentPmpIdl(
-  rpc: ReturnType<typeof createSolanaRpc>,
-  programId: Address,
-): Promise<string | null> {
-  try {
-    const content = await fetchMetadataContent(rpc, programId, 'idl');
-    return content || null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchCurrentAnchorIdl(
-  rpc: ReturnType<typeof createSolanaRpc>,
-  anchorAddr: Address,
-): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const accountInfo = await (rpc as any)
-    .getAccountInfo(anchorAddr, { encoding: 'base64' })
-    .send();
-
-  if (!accountInfo?.value?.data) return null;
-
-  const raw = Buffer.from(accountInfo.value.data[0], 'base64');
-  if (raw.length <= 44) return null;
-
-  const dataLen = readU32LE(raw, 40);
-  if (dataLen === 0 || 44 + dataLen > raw.length) return null;
-
-  const compressed = raw.slice(44, 44 + dataLen);
-  const decompressed = await zlibInflate(compressed);
-  return decompressed.toString('utf8');
-}
-
 export async function GET(req: NextRequest) {
   try {
     const programId = req.nextUrl.searchParams.get('programId')?.trim();
@@ -135,28 +89,35 @@ export async function GET(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;
 
-    const [pmpPda] = await findMetadataPda({ program: addr, authority: null, seed: 'idl' });
+    const [canonicalPmpPda] = await findMetadataPda({
+      program: addr,
+      authority: null,
+      seed: 'idl',
+    });
     const anchorAddr = await findAnchorIdlAddress(addr);
 
-    const [pmpContent, anchorContent] = await Promise.all([
-      fetchCurrentPmpIdl(rpc, addr),
-      fetchCurrentAnchorIdl(rpc, anchorAddr),
+    const [pmpResolved, anchorContent] = await Promise.all([
+      fetchPmpIdlContentResolved(rpc, addr, 'idl'),
+      fetchCurrentAnchorIdlString(rpc, addr),
     ]);
 
-    // Only fetch last-write slot for sources that actually have content
+    const pmpMetadataAddress = pmpResolved?.metadataAddress ?? canonicalPmpPda;
+
     const [pmpLastWrite, anchorLastWrite] = await Promise.all([
-      pmpContent ? getLastWriteSlot(rpc, pmpPda) : null,
+      pmpResolved ? getLastWriteSlot(rpc, pmpMetadataAddress) : null,
       anchorContent ? getLastWriteSlot(rpc, anchorAddr) : null,
     ]);
 
-    const pmp: IdlVersion[] = pmpContent ? [buildVersion('pmp', pmpContent, pmpLastWrite)] : [];
+    const pmp: IdlVersion[] = pmpResolved
+      ? [buildVersion('pmp', pmpResolved.content, pmpLastWrite)]
+      : [];
     const anchor: IdlVersion[] = anchorContent
       ? [buildVersion('anchor', anchorContent, anchorLastWrite)]
       : [];
 
     return NextResponse.json({
       programId,
-      pmpAddress: pmpPda,
+      pmpAddress: pmpMetadataAddress,
       anchorAddress: anchorAddr,
       pmp,
       anchor,

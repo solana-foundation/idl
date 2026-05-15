@@ -3,20 +3,20 @@
 # Manual run: Actions → "Upload IDL to Program Metadata" → Run workflow.
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
-#   PMP_UPLOAD_KEYPAIR — full Solana keypair JSON array (same format as ~/.config/solana/id.json).
+#   UPLOAD_KEYPAIR     — full Solana keypair JSON array (same format as ~/.config/solana/id.json).
 #                        This wallet signs as authority; it also pays fees unless you set PAYER_KEYPAIR.
-#   RPC_URL_MAINNET    — HTTPS RPC for mainnet-beta (workflow input "cluster").
+#   RPC_URL_MAINNET    — HTTPS RPC for mainnet-beta.
 #   RPC_URL_TESTNET    — HTTPS RPC for testnet.
 #   RPC_URL_DEVNET     — HTTPS RPC for devnet.
-#   RPC_URL            — optional legacy fallback if the cluster-specific secret for the chosen cluster is empty.
 #
 # Optional secrets:
-#   PAYER_KEYPAIR      — if set, this keypair pays rent and fees while PMP_UPLOAD_KEYPAIR remains authority.
+#   PAYER_KEYPAIR      — if set, this keypair pays rent and fees while UPLOAD_KEYPAIR remains authority.
 #
-# Native programs and other cases without BPF upgrade authority require non-canonical metadata
-# (authority = your keypair). Set workflow input `non_canonical` to true (default).
+# Uploads are always written as **non-canonical** metadata (authority = UPLOAD_KEYPAIR), since this
+# workflow's keypair is never the program upgrade authority. Canonical uploads must be done out-of-band
+# from a runner that holds the program's upgrade authority key.
 #
-# For programs you deploy, set `non_canonical` to false and use the program upgrade authority keypair.
+# Set `cluster` to `all` to fan out to mainnet-beta, testnet, and devnet in parallel.
 
 name: Upload IDL to Program Metadata
 
@@ -35,23 +35,41 @@ on:
         required: true
         type: string
       cluster:
-        description: Solana cluster (selects which RPC_* secret is used)
+        description: Solana cluster ("all" fans out to mainnet-beta + testnet + devnet)
         required: true
         type: choice
         options:
+          - all
           - mainnet-beta
           - testnet
           - devnet
         default: mainnet-beta
-      non_canonical:
-        description: Use non-canonical PMP account (required for native programs and third-party uploads)
-        required: true
-        type: boolean
-        default: true
 
 jobs:
-  upload:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      clusters: ${{ steps.set.outputs.clusters }}
+    steps:
+      - id: set
+        env:
+          CLUSTER: ${{ inputs.cluster }}
+        run: |
+          set -euo pipefail
+          if [ "$CLUSTER" = "all" ]; then
+            echo 'clusters=["mainnet-beta","testnet","devnet"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "clusters=[\"$CLUSTER\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  upload:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cluster: ${{ fromJSON(needs.plan.outputs.clusters) }}
+    name: upload (${{ matrix.cluster }})
     steps:
       - name: Download and validate IDL
         env:
@@ -80,24 +98,24 @@ jobs:
 
       - name: Write signing keypair
         env:
-          PMP_UPLOAD_KEYPAIR: ${{ secrets.PMP_UPLOAD_KEYPAIR }}
+          UPLOAD_KEYPAIR: ${{ secrets.UPLOAD_KEYPAIR }}
         run: |
           set -euo pipefail
-          if [ -z "${PMP_UPLOAD_KEYPAIR:-}" ]; then
-            echo "Missing secret PMP_UPLOAD_KEYPAIR"
+          if [ -z "${UPLOAD_KEYPAIR:-}" ]; then
+            echo "Missing secret UPLOAD_KEYPAIR"
             exit 1
           fi
-          printf '%s' "$PMP_UPLOAD_KEYPAIR" > upload-keypair.json
+          printf '%s' "$UPLOAD_KEYPAIR" > upload-keypair.json
           node -e "
             const fs = require('fs');
             const s = fs.readFileSync('upload-keypair.json', 'utf8').trim();
             let data;
             try { data = JSON.parse(s); } catch {
-              console.error('PMP_UPLOAD_KEYPAIR is not valid JSON (wrong secret or HTML pasted). Use the full id.json array.');
+              console.error('UPLOAD_KEYPAIR is not valid JSON (wrong secret or HTML pasted). Use the full id.json array.');
               process.exit(1);
             }
             if (!Array.isArray(data) || data.length < 64) {
-              console.error('PMP_UPLOAD_KEYPAIR must be a JSON array of 64 numbers (Solana keypair file).');
+              console.error('UPLOAD_KEYPAIR must be a JSON array of 64 numbers (Solana keypair file).');
               process.exit(1);
             }
           "
@@ -126,31 +144,28 @@ jobs:
 
       - name: Upload IDL via program-metadata CLI
         env:
-          CLUSTER: ${{ inputs.cluster }}
+          CLUSTER: ${{ matrix.cluster }}
           RPC_URL_MAINNET: ${{ secrets.RPC_URL_MAINNET }}
           RPC_URL_TESTNET: ${{ secrets.RPC_URL_TESTNET }}
           RPC_URL_DEVNET: ${{ secrets.RPC_URL_DEVNET }}
-          RPC_URL_FALLBACK: ${{ secrets.RPC_URL }}
           PROGRAM_ID: ${{ inputs.program_id }}
-          NON_CANONICAL: ${{ inputs.non_canonical }}
         run: |
           set -euo pipefail
           case "${CLUSTER}" in
-            mainnet-beta) RPC_URL="${RPC_URL_MAINNET:-${RPC_URL_FALLBACK:-}}" ;;
-            testnet)      RPC_URL="${RPC_URL_TESTNET:-${RPC_URL_FALLBACK:-}}" ;;
-            devnet)       RPC_URL="${RPC_URL_DEVNET:-${RPC_URL_FALLBACK:-}}" ;;
+            mainnet-beta) RPC_URL="${RPC_URL_MAINNET:-}" ;;
+            testnet)      RPC_URL="${RPC_URL_TESTNET:-}" ;;
+            devnet)       RPC_URL="${RPC_URL_DEVNET:-}" ;;
             *)
               echo "Unknown cluster: ${CLUSTER}"
               exit 1
               ;;
           esac
           if [ -z "${RPC_URL:-}" ]; then
-            echo "No RPC URL for cluster ${CLUSTER}. Set secret RPC_URL_MAINNET, RPC_URL_TESTNET, or RPC_URL_DEVNET (or legacy RPC_URL)."
+            echo "Missing RPC URL for cluster ${CLUSTER}. Set the matching secret (RPC_URL_MAINNET, RPC_URL_TESTNET, or RPC_URL_DEVNET)."
             exit 1
           fi
           echo "Using RPC for cluster: ${CLUSTER}"
-          EXTRA=( )
-          case "${NON_CANONICAL}" in true|True) EXTRA+=( --non-canonical ) ;; esac
+          EXTRA=( --non-canonical )
           if [ -f payer-keypair.json ]; then
             EXTRA+=( -p payer-keypair.json )
           fi

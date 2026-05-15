@@ -111,9 +111,11 @@ The IDL **CLI** (`src/cli.ts`) lives at the **repository root**, not inside `web
 
 Deploy the app to Vercel by setting the project **root directory** to `web` and adding `RPC_URL` in the environment.
 
+IDL resolution order (per program): **canonical PMP** (seed `idl`) → **non-canonical PMP** with `IDL_FALLBACK_PMP_AUTHORITY` (`fndnu15…`, set to the `UPLOAD_KEYPAIR` pubkey in `src/pmp-idl.ts`) → **Anchor**.
+
 ### API Endpoints
 
-**`GET /api/idl?programId=<address>`** — Returns the **current** IDL the same way the handler resolves on-chain data: tries PMP first (canonical seed `idl`), then Anchor. Response shape:
+**`GET /api/idl?programId=<address>`** — Returns the **current** IDL (canonical PMP, then non-canonical PMP via the fallback authority, then Anchor). Response shape:
 
 ```json
 {

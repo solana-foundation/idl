@@ -23,6 +23,6 @@
       "@solana-program/program-metadata/*": ["./node_modules/@solana-program/program-metadata/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../src/rpc.ts", "../src/anchor.ts", "../src/program-metadata.ts", "../src/current-idl.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../src/rpc.ts", "../src/anchor.ts", "../src/program-metadata.ts", "../src/current-idl.ts", "../src/pmp-idl.ts"],
   "exclude": ["node_modules"]
 }
