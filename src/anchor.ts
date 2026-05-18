@@ -1,13 +1,8 @@
-import {
-    Address,
-    createAddressWithSeed,
-    getProgramDerivedAddress,
-    Rpc,
-    SolanaRpcApi,
-} from '@solana/kit';
 import { createHash } from 'node:crypto';
-import { inflate } from 'node:zlib';
 import { promisify } from 'node:util';
+import { inflate } from 'node:zlib';
+
+import { Address, createAddressWithSeed, getProgramDerivedAddress, Rpc, SolanaRpcApi } from '@solana/kit';
 
 import {
     fromBase58,
@@ -30,9 +25,7 @@ const zlibInflate = promisify(inflate);
  * In Anchor's Rust code this is a u64 constant serialized via Borsh (LE),
  * so the on-chain bytes are the reverse of the raw SHA256 output.
  */
-const IDL_IX_TAG = Buffer.from(
-    createHash('sha256').update('anchor:idl').digest().subarray(0, 8),
-).reverse();
+const IDL_IX_TAG = Buffer.from(createHash('sha256').update('anchor:idl').digest().subarray(0, 8)).reverse();
 
 function anchorGlobalDisc(name: string): Buffer {
     return createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
@@ -40,16 +33,16 @@ function anchorGlobalDisc(name: string): Buffer {
 
 /** New-style (Anchor >=0.30) per-instruction discriminators. */
 const GLOBAL_DISCS = {
-    createBuffer: anchorGlobalDisc('create_buffer'),
-    write: anchorGlobalDisc('write'),
-    setBuffer: anchorGlobalDisc('set_buffer'),
-    setAuthority: anchorGlobalDisc('set_authority'),
     close: anchorGlobalDisc('close'),
-    idlCreateBuffer: anchorGlobalDisc('idl_create_buffer'),
-    idlWrite: anchorGlobalDisc('idl_write'),
-    idlSetBuffer: anchorGlobalDisc('idl_set_buffer'),
-    idlSetAuthority: anchorGlobalDisc('idl_set_authority'),
+    createBuffer: anchorGlobalDisc('create_buffer'),
     idlClose: anchorGlobalDisc('idl_close'),
+    idlCreateBuffer: anchorGlobalDisc('idl_create_buffer'),
+    idlSetAuthority: anchorGlobalDisc('idl_set_authority'),
+    idlSetBuffer: anchorGlobalDisc('idl_set_buffer'),
+    idlWrite: anchorGlobalDisc('idl_write'),
+    setAuthority: anchorGlobalDisc('set_authority'),
+    setBuffer: anchorGlobalDisc('set_buffer'),
+    write: anchorGlobalDisc('write'),
 } as const;
 
 function matchDisc(data: Uint8Array, disc: Buffer): boolean {
@@ -93,20 +86,20 @@ function identifyInstruction(data: Uint8Array): { name: IdlIxName; legacy: boole
     if (data.length < 8) return null;
 
     if (matchDisc(data, GLOBAL_DISCS.createBuffer) || matchDisc(data, GLOBAL_DISCS.idlCreateBuffer))
-        return { name: 'CreateBuffer', legacy: false };
+        return { legacy: false, name: 'CreateBuffer' };
     if (matchDisc(data, GLOBAL_DISCS.write) || matchDisc(data, GLOBAL_DISCS.idlWrite))
-        return { name: 'Write', legacy: false };
+        return { legacy: false, name: 'Write' };
     if (matchDisc(data, GLOBAL_DISCS.setBuffer) || matchDisc(data, GLOBAL_DISCS.idlSetBuffer))
-        return { name: 'SetBuffer', legacy: false };
+        return { legacy: false, name: 'SetBuffer' };
     if (matchDisc(data, GLOBAL_DISCS.setAuthority) || matchDisc(data, GLOBAL_DISCS.idlSetAuthority))
-        return { name: 'SetAuthority', legacy: false };
+        return { legacy: false, name: 'SetAuthority' };
     if (matchDisc(data, GLOBAL_DISCS.close) || matchDisc(data, GLOBAL_DISCS.idlClose))
-        return { name: 'Close', legacy: false };
+        return { legacy: false, name: 'Close' };
 
     if (isLegacyIdlIx(data) && data.length >= 9) {
         const variant = data[8];
         const name = LEGACY_VARIANT[variant];
-        if (name) return { name, legacy: true };
+        if (name) return { legacy: true, name };
     }
 
     return null;
@@ -120,10 +113,10 @@ export async function findAnchorIdlAddress(programId: Address): Promise<Address>
         seeds: [],
     });
 
-    return createAddressWithSeed({
+    return await createAddressWithSeed({
         baseAddress: base,
-        seed: 'anchor:idl',
         programAddress: programId,
+        seed: 'anchor:idl',
     });
 }
 
@@ -252,7 +245,7 @@ type AnchorIdlState = {
 };
 
 function emptyAnchorState(): AnchorIdlState {
-    return { data: new Uint8Array(0), writeOffset: 0, authority: null, closed: false };
+    return { authority: null, closed: false, data: new Uint8Array(0), writeOffset: 0 };
 }
 
 function cloneAnchorState(s: AnchorIdlState): AnchorIdlState {
@@ -261,10 +254,7 @@ function cloneAnchorState(s: AnchorIdlState): AnchorIdlState {
 
 // ─── History reconstruction ──────────────────────────────────────────────────
 
-export async function reconstructAnchorHistory(
-    rpc: Rpc<SolanaRpcApi>,
-    programId: Address,
-): Promise<Snapshot[]> {
+export async function reconstructAnchorHistory(rpc: Rpc<SolanaRpcApi>, programId: Address): Promise<Snapshot[]> {
     const idlAddr = await findAnchorIdlAddress(programId);
 
     const sigs = await fetchAllSignatures(rpc, idlAddr);
@@ -288,9 +278,7 @@ export async function reconstructAnchorHistory(
         if (targetIdx === -1) continue;
 
         const relevant = flattenInstructions(tx).filter(
-            (ix) =>
-                keys[ix.programIdIndex] === (programId as string) &&
-                ix.accounts.includes(targetIdx),
+            ix => keys[ix.programIdIndex] === (programId as string) && ix.accounts.includes(targetIdx),
         );
         if (relevant.length === 0) continue;
 
@@ -362,12 +350,12 @@ export async function reconstructAnchorHistory(
         }
 
         snapshots.push({
-            slot: sigInfo.slot,
             blockTime: sigInfo.blockTime,
-            signature: sigInfo.signature,
-            instruction: lastName,
-            state: closed ? null : cloneAnchorState(state),
             decodedContent,
+            instruction: lastName,
+            signature: sigInfo.signature,
+            slot: sigInfo.slot,
+            state: closed ? null : cloneAnchorState(state),
         });
 
         if (closed) break;

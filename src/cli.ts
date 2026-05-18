@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Address, createSolanaRpc, type Rpc, type SolanaRpcApi } from '@solana/kit';
 import { Command } from 'commander';
 import pc from 'picocolors';
 
+const PKG_VERSION: string = (() => {
+    try {
+        const here = path.dirname(fileURLToPath(import.meta.url));
+        const pkgPath = path.resolve(here, '..', 'package.json');
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+        return pkg.version ?? '0.0.0';
+    } catch {
+        return '0.0.0';
+    }
+})();
+
+import { findAnchorIdlAddress, reconstructAnchorHistory } from './anchor.js';
+import { fetchCurrentIdlPreferPmp } from './current-idl.js';
+import { buildPmpIdlLookups } from './pmp-idl.js';
 import {
     COMPRESSION_NAME,
     DISC_LABEL,
@@ -15,12 +30,6 @@ import {
     reconstructPmpHistory,
     type VirtualState,
 } from './program-metadata.js';
-import {
-    findAnchorIdlAddress,
-    reconstructAnchorHistory,
-} from './anchor.js';
-import { fetchCurrentIdlPreferPmp } from './current-idl.js';
-import { buildPmpIdlLookups } from './pmp-idl.js';
 import type { Snapshot } from './rpc.js';
 
 // ─── Display ─────────────────────────────────────────────────────────────────
@@ -31,11 +40,7 @@ function fmtTime(blockTime: bigint | null): string {
 }
 
 function isPmpState(state: unknown): state is VirtualState {
-    return (
-        state !== null &&
-        typeof state === 'object' &&
-        'discriminator' in (state as Record<string, unknown>)
-    );
+    return state !== null && typeof state === 'object' && 'discriminator' in (state as Record<string, unknown>);
 }
 
 function displaySnapshots(snapshots: Snapshot[], idlType: string): void {
@@ -49,9 +54,7 @@ function displaySnapshots(snapshots: Snapshot[], idlType: string): void {
 
         if (!snap.state) {
             console.log(`${slot}  ${time}  ${instr}  ${pc.red('CLOSED')}`);
-            console.log(
-                `               ${' '.repeat(21)} ${pc.dim('sig: ' + snap.signature)}\n`,
-            );
+            console.log(`               ${' '.repeat(21)} ${pc.dim('sig: ' + snap.signature)}\n`);
             continue;
         }
 
@@ -66,14 +69,9 @@ function displaySnapshots(snapshots: Snapshot[], idlType: string): void {
                 const enc = ENCODING_NAME[state.encoding] ?? `enc(${state.encoding})`;
                 const cmp = COMPRESSION_NAME[state.compression] ?? `cmp(${state.compression})`;
                 const mutable = state.mutable ? '' : pc.red(' immutable');
-                dataInfo =
-                    pc.green(`${state.dataLength} bytes`) +
-                    `  ${fmt}/${enc}/${cmp}${mutable}`;
+                dataInfo = pc.green(`${state.dataLength} bytes`) + `  ${fmt}/${enc}/${cmp}${mutable}`;
             } else {
-                dataInfo = pc.dim(
-                    discLabel +
-                        (state.data.length > 0 ? `  ${state.data.length} bytes buffered` : ''),
-                );
+                dataInfo = pc.dim(discLabel + (state.data.length > 0 ? `  ${state.data.length} bytes buffered` : ''));
             }
         } else {
             const anchorState = snap.state as { data: Uint8Array; writeOffset: number };
@@ -81,18 +79,14 @@ function displaySnapshots(snapshots: Snapshot[], idlType: string): void {
         }
 
         console.log(`${slot}  ${time}  ${instr}  ${dataInfo}`);
-        console.log(
-            `               ${' '.repeat(21)} ${pc.dim('sig: ' + snap.signature)}`,
-        );
+        console.log(`               ${' '.repeat(21)} ${pc.dim('sig: ' + snap.signature)}`);
 
         if (snap.decodedContent !== null) {
             const preview =
                 snap.decodedContent.length > 140
                     ? snap.decodedContent.slice(0, 140) + pc.dim('...')
                     : snap.decodedContent;
-            console.log(
-                `               ${' '.repeat(21)} ${pc.dim('↳')} ${preview}`,
-            );
+            console.log(`               ${' '.repeat(21)} ${pc.dim('↳')} ${preview}`);
         }
 
         console.log();
@@ -113,37 +107,35 @@ function saveSnapshots(snapshots: Snapshot[], outDir: string): void {
         if (snap.state && isPmpState(snap.state)) {
             const state = snap.state;
             stateObj = {
-                discriminator: state.discriminator,
                 authority: state.authority,
-                mutable: state.mutable,
                 canonical: state.canonical,
-                seed: Buffer.from(state.seed).toString('hex'),
-                encoding: ENCODING_NAME[state.encoding] ?? state.encoding,
                 compression: COMPRESSION_NAME[state.compression] ?? state.compression,
-                format: FORMAT_NAME[state.format] ?? state.format,
-                dataSource: state.dataSource,
+                data: Buffer.from(state.data.slice(0, state.dataLength)).toString('base64'),
                 dataLength: state.dataLength,
-                data: Buffer.from(
-                    state.data.slice(0, state.dataLength),
-                ).toString('base64'),
+                dataSource: state.dataSource,
+                discriminator: state.discriminator,
+                encoding: ENCODING_NAME[state.encoding] ?? state.encoding,
+                format: FORMAT_NAME[state.format] ?? state.format,
+                mutable: state.mutable,
+                seed: Buffer.from(state.seed).toString('hex'),
             };
         } else if (snap.state) {
             const s = snap.state as { data: Uint8Array; writeOffset: number; authority: string | null };
             stateObj = {
                 authority: s.authority,
-                writeOffset: s.writeOffset,
-                dataLength: s.data.length,
                 data: Buffer.from(s.data).toString('base64'),
+                dataLength: s.data.length,
+                writeOffset: s.writeOffset,
             };
         }
 
         const serialisable = {
-            slot: snap.slot.toString(),
             blockTime: snap.blockTime !== null ? Number(snap.blockTime) : null,
-            signature: snap.signature,
-            instruction: snap.instruction,
-            state: stateObj,
             decodedContent: snap.decodedContent,
+            instruction: snap.instruction,
+            signature: snap.signature,
+            slot: snap.slot.toString(),
+            state: stateObj,
         };
 
         fs.writeFileSync(filepath, JSON.stringify(serialisable, null, 2));
@@ -176,9 +168,7 @@ function dumpDistinctIdls(snapshots: Snapshot[], outDir: string): number {
         let version: string | null = null;
         try {
             const parsed = JSON.parse(snap.decodedContent) as Record<string, unknown>;
-            const v =
-                parsed['version'] ??
-                (parsed['metadata'] as Record<string, unknown> | undefined)?.['version'];
+            const v = parsed['version'] ?? (parsed['metadata'] as Record<string, unknown> | undefined)?.['version'];
             if (typeof v === 'string') version = v;
         } catch {
             /* not JSON */
@@ -186,9 +176,9 @@ function dumpDistinctIdls(snapshots: Snapshot[], outDir: string): number {
 
         versions.push({
             content: snap.decodedContent,
-            version,
             fromSlot: snap.slot,
             fromTime: snap.blockTime,
+            version,
         });
     }
 
@@ -210,17 +200,14 @@ function dumpDistinctIdls(snapshots: Snapshot[], outDir: string): number {
               : 'current';
 
         index.push({
-            version: v.version,
-            filename,
             activeFrom: { slot: v.fromSlot.toString(), time: fmtTimeIso(v.fromTime) },
             activeTo,
+            filename,
+            version: v.version,
         });
     }
 
-    fs.writeFileSync(
-        path.join(outDir, 'index.json'),
-        JSON.stringify(index, null, 2),
-    );
+    fs.writeFileSync(path.join(outDir, 'index.json'), JSON.stringify(index, null, 2));
 
     if (versions.length > 0) {
         console.log(pc.bold(`\nIDL version timeline:\n`));
@@ -228,14 +215,9 @@ function dumpDistinctIdls(snapshots: Snapshot[], outDir: string): number {
             const entry = index[i];
             const from = `slot ${pc.cyan(entry.activeFrom.slot)}`;
             const fromTime = entry.activeFrom.time ? pc.dim(` (${entry.activeFrom.time})`) : '';
-            const to =
-                entry.activeTo === 'current'
-                    ? pc.green('current')
-                    : `slot ${pc.cyan(entry.activeTo.slot)}`;
+            const to = entry.activeTo === 'current' ? pc.green('current') : `slot ${pc.cyan(entry.activeTo.slot)}`;
             const toTime =
-                entry.activeTo !== 'current' && entry.activeTo.time
-                    ? pc.dim(` (${entry.activeTo.time})`)
-                    : '';
+                entry.activeTo !== 'current' && entry.activeTo.time ? pc.dim(` (${entry.activeTo.time})`) : '';
             const ver = entry.version ? pc.yellow(`v${entry.version}`) : pc.dim('(no version)');
             console.log(`  ${ver}  ${from}${fromTime}  →  ${to}${toTime}`);
             console.log(`  ${pc.dim(`  └─ ${entry.filename}`)}`);
@@ -256,9 +238,7 @@ function fmtTimeIso(blockTime: bigint | null): string | null {
 async function countSigs(rpc: ReturnType<typeof createSolanaRpc>, addr: Address): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sigs = await (rpc as any)
-            .getSignaturesForAddress(addr, { limit: 1 })
-            .send();
+        const sigs = await rpc.getSignaturesForAddress(addr, { limit: 1 }).send();
         return sigs?.length ?? 0;
     } catch {
         return 0;
@@ -281,9 +261,9 @@ async function detectIdlType(
 
     const [anchorCount, pmpCounts] = await Promise.all([
         countSigs(rpc, anchorAddr),
-        Promise.all(pmpLookups.map((l) => countSigs(rpc, l.address))),
+        Promise.all(pmpLookups.map(l => countSigs(rpc, l.address))),
     ]);
-    const pmpHasSigs = pmpCounts.some((c) => c > 0);
+    const pmpHasSigs = pmpCounts.some(c => c > 0);
 
     if (anchorCount > 0 && pmpHasSigs) return 'anchor';
     if (pmpHasSigs) return 'pmp';
@@ -373,16 +353,12 @@ async function runSingle(
 
     if (outputDir) {
         saveSnapshots(snapshots, outputDir);
-        console.log(
-            pc.green(`Saved ${snapshots.length} snapshot(s) to ${pc.bold(outputDir)}`),
-        );
+        console.log(pc.green(`Saved ${snapshots.length} snapshot(s) to ${pc.bold(outputDir)}`));
     }
 
     if (dumpDir) {
         const written = dumpDistinctIdls(snapshots, dumpDir);
-        console.log(
-            pc.green(`Wrote ${written} distinct IDL version(s) to ${pc.bold(dumpDir)}`),
-        );
+        console.log(pc.green(`Wrote ${written} distinct IDL version(s) to ${pc.bold(dumpDir)}`));
     }
 }
 
@@ -391,7 +367,7 @@ async function runSingle(
 const program = new Command()
     .name('idl')
     .description('Reconstruct historical IDL versions from on-chain Solana transactions')
-    .version('0.1.0')
+    .version(PKG_VERSION)
     .argument('<program-address>', 'Program address to look up IDL history for')
     .option('-r, --rpc <url>', 'Solana RPC URL (or set RPC_URL env var)')
     .option('-t, --type <type>', 'IDL type: "pmp", "anchor", or "both" (auto-detected if omitted)')
@@ -415,20 +391,18 @@ const program = new Command()
         const rpc = createSolanaRpc(rpcUrl);
         const addr = programAddress as Address;
         const seed: string = opts.seed ?? 'idl';
-        const authority: Address | undefined = opts.authority
-            ? (opts.authority as Address)
-            : undefined;
+        const authority: Address | undefined = opts.authority ? (opts.authority as Address) : undefined;
 
         if (opts.current) {
             if (opts.output || opts.dumpIdls) {
-                console.error(
-                    pc.red('Error: --current cannot be used with --output or --dump-idls.'),
-                );
+                console.error(pc.red('Error: --current cannot be used with --output or --dump-idls.'));
                 process.exit(1);
             }
             if (opts.type != null && opts.type !== 'auto') {
                 console.error(
-                    pc.red('Error: --current cannot be used with --type (resolution is always PMP first, then Anchor).'),
+                    pc.red(
+                        'Error: --current cannot be used with --type (resolution is always PMP first, then Anchor).',
+                    ),
                 );
                 process.exit(1);
             }
@@ -438,9 +412,7 @@ const program = new Command()
                 ...(authority !== undefined ? { authority } : {}),
             });
             if (!result) {
-                console.error(
-                    pc.red('No IDL found for this program (checked PMP and Anchor).'),
-                );
+                console.error(pc.red('No IDL found for this program (checked PMP and Anchor).'));
                 process.exit(1);
             }
             console.log(JSON.stringify(result, null, 2));
@@ -455,15 +427,14 @@ const program = new Command()
             console.log(pc.dim(`Detected: ${typeArg}\n`));
         }
 
-        const types: Array<'pmp' | 'anchor'> =
-            typeArg === 'both' ? ['pmp', 'anchor'] : [typeArg as 'pmp' | 'anchor'];
+        const types: Array<'pmp' | 'anchor'> = typeArg === 'both' ? ['pmp', 'anchor'] : [typeArg as 'pmp' | 'anchor'];
 
         for (const t of types) {
-            const outDir = opts.output
-                ? types.length > 1 ? path.join(opts.output, t) : opts.output
-                : undefined;
+            const outDir = opts.output ? (types.length > 1 ? path.join(opts.output, t) : opts.output) : undefined;
             const dumpDir = opts.dumpIdls
-                ? types.length > 1 ? path.join(opts.dumpIdls, t) : opts.dumpIdls
+                ? types.length > 1
+                    ? path.join(opts.dumpIdls, t)
+                    : opts.dumpIdls
                 : undefined;
 
             await runSingle(rpc, rpcUrl, addr, t, seed, authority, outDir, dumpDir);

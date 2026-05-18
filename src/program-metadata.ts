@@ -1,9 +1,4 @@
 import {
-    Address,
-    Rpc,
-    SolanaRpcApi,
-} from '@solana/kit';
-import {
     Compression,
     Encoding,
     findMetadataPda,
@@ -11,6 +6,7 @@ import {
     type Seed,
     unpackDirectData as pmpUnpackDirectData,
 } from '@solana-program/program-metadata';
+import { Address, Rpc, SolanaRpcApi } from '@solana/kit';
 
 import {
     fromBase58,
@@ -37,20 +33,27 @@ export const COMPRESSION_NAME = ['none', 'gzip', 'zlib'];
 export const DISC_LABEL = ['Empty', 'Buffer', 'Metadata'];
 
 const DISC = {
-    Write: 0,
+    Allocate: 7,
+    Close: 6,
+    Extend: 8,
     Initialize: 1,
     SetAuthority: 2,
     SetData: 3,
     SetImmutable: 4,
     Trim: 5,
-    Close: 6,
-    Allocate: 7,
-    Extend: 8,
+    Write: 0,
 } as const;
 
 const DISC_NAME: Record<number, string> = {
-    0: 'Write', 1: 'Initialize', 2: 'SetAuthority', 3: 'SetData',
-    4: 'SetImmutable', 5: 'Trim', 6: 'Close', 7: 'Allocate', 8: 'Extend',
+    0: 'Write',
+    1: 'Initialize',
+    2: 'SetAuthority',
+    3: 'SetData',
+    4: 'SetImmutable',
+    5: 'Trim',
+    6: 'Close',
+    7: 'Allocate',
+    8: 'Extend',
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -79,8 +82,8 @@ export async function findPmpMetadataPda(
     authority?: Address | null,
 ): Promise<Address> {
     const [pda] = await findMetadataPda({
-        program: programAddress,
         authority: authority ?? null,
+        program: programAddress,
         seed,
     });
     return pda;
@@ -91,25 +94,30 @@ export async function findPmpMetadataPda(
 function cloneState(s: VirtualState): VirtualState {
     return {
         ...s,
-        seed: new Uint8Array(s.seed) as Uint8Array<ArrayBuffer>,
         data: new Uint8Array(s.data) as Uint8Array<ArrayBuffer>,
+        seed: new Uint8Array(s.seed) as Uint8Array<ArrayBuffer>,
     };
 }
 
 function emptyState(): VirtualState {
     return {
-        discriminator: 0, authority: null, mutable: true, canonical: false,
-        seed: new Uint8Array(16), encoding: 0, compression: 0, format: 0,
-        dataSource: 0, dataLength: 0, data: new Uint8Array(0),
+        authority: null,
+        canonical: false,
+        compression: 0,
+        data: new Uint8Array(0),
+        dataLength: 0,
+        dataSource: 0,
+        discriminator: 0,
+        encoding: 0,
+        format: 0,
+        mutable: true,
+        seed: new Uint8Array(16),
     };
 }
 
 // ─── Buffer reconstruction ───────────────────────────────────────────────────
 
-async function reconstructBufferData(
-    rpc: Rpc<SolanaRpcApi>,
-    bufferAddr: Address,
-): Promise<Uint8Array<ArrayBuffer>> {
+async function reconstructBufferData(rpc: Rpc<SolanaRpcApi>, bufferAddr: Address): Promise<Uint8Array<ArrayBuffer>> {
     let data: Uint8Array<ArrayBuffer> = new Uint8Array(0);
 
     const sigs = await fetchAllSignatures(rpc, bufferAddr);
@@ -156,7 +164,7 @@ async function applyInstruction(
     rpc: Rpc<SolanaRpcApi>,
 ): Promise<{ next: VirtualState; closed: boolean; name: string }> {
     const bytes = fromBase58(ix.data);
-    if (bytes.length === 0) return { next: state, closed: false, name: 'Unknown' };
+    if (bytes.length === 0) return { closed: false, name: 'Unknown', next: state };
 
     const disc = bytes[0];
     const name = DISC_NAME[disc] ?? `Unknown(${disc})`;
@@ -241,7 +249,7 @@ async function applyInstruction(
 
         case DISC.SetAuthority: {
             if (bytes.length >= 33) {
-                const allZero = bytes.slice(1, 33).every((b) => b === 0);
+                const allZero = bytes.slice(1, 33).every(b => b === 0);
                 next.authority = allZero ? null : rawBytesToAddress(bytes, 1);
             } else {
                 next.authority = null;
@@ -255,7 +263,7 @@ async function applyInstruction(
         }
 
         case DISC.Close: {
-            return { next, closed: true, name };
+            return { closed: true, name, next };
         }
 
         case DISC.Trim:
@@ -263,7 +271,7 @@ async function applyInstruction(
             break;
     }
 
-    return { next, closed: false, name };
+    return { closed: false, name, next };
 }
 
 // ─── Decoding ────────────────────────────────────────────────────────────────
@@ -275,8 +283,8 @@ function tryDecode(state: VirtualState): string | null {
 
     try {
         return pmpUnpackDirectData({
-            data: state.data.slice(0, state.dataLength),
             compression: state.compression as Compression,
+            data: state.data.slice(0, state.dataLength),
             encoding: state.encoding as Encoding,
         });
     } catch {
@@ -286,10 +294,7 @@ function tryDecode(state: VirtualState): string | null {
 
 // ─── History reconstruction ──────────────────────────────────────────────────
 
-export async function reconstructPmpHistory(
-    rpc: Rpc<SolanaRpcApi>,
-    metadataAddr: Address,
-): Promise<Snapshot[]> {
+export async function reconstructPmpHistory(rpc: Rpc<SolanaRpcApi>, metadataAddr: Address): Promise<Snapshot[]> {
     const sigs = await fetchAllSignatures(rpc, metadataAddr);
     const snapshots: Snapshot[] = [];
     let state = emptyState();
@@ -311,7 +316,7 @@ export async function reconstructPmpHistory(
         if (targetIdx === -1) continue;
 
         const relevant = flattenInstructions(tx).filter(
-            (ix) =>
+            ix =>
                 keys[ix.programIdIndex] === (PROGRAM_METADATA_PROGRAM_ADDRESS as string) &&
                 ix.accounts[0] === targetIdx,
         );
@@ -331,12 +336,12 @@ export async function reconstructPmpHistory(
         }
 
         snapshots.push({
-            slot: sigInfo.slot,
             blockTime: sigInfo.blockTime,
-            signature: sigInfo.signature,
-            instruction: lastName,
-            state: closed ? null : cloneState(state),
             decodedContent: closed ? null : tryDecode(state),
+            instruction: lastName,
+            signature: sigInfo.signature,
+            slot: sigInfo.slot,
+            state: closed ? null : cloneState(state),
         });
 
         if (closed) break;

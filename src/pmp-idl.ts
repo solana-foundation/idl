@@ -1,15 +1,14 @@
-import type { Address } from '@solana/kit';
 import { fetchMetadataContent, type Seed } from '@solana-program/program-metadata';
+import type { Address } from '@solana/kit';
 
-import { findPmpMetadataPda } from './program-metadata.js';
 import type { SolanaRpcClient } from './current-idl.js';
+import { findPmpMetadataPda } from './program-metadata.js';
 
 /**
  * Non-canonical PMP authority tried after the canonical lookup misses
  * (public key of `UPLOAD_KEYPAIR` in the GitHub Actions workflow).
  */
-export const IDL_FALLBACK_PMP_AUTHORITY =
-    'fndnu15PLXELbLsTqrfbiweBvsBj2o12RoVfkeCCbX2' as Address;
+export const IDL_FALLBACK_PMP_AUTHORITY = 'fndnu15PLXELbLsTqrfbiweBvsBj2o12RoVfkeCCbX2' as Address;
 
 export type PmpIdlLookup = {
     authority: Address | null;
@@ -33,26 +32,22 @@ export async function buildPmpIdlLookups(
 ): Promise<PmpIdlLookup[]> {
     if (explicitAuthority !== undefined) {
         const address = await findPmpMetadataPda(programId, seed, explicitAuthority);
-        return [{ authority: explicitAuthority, address }];
+        return [{ address, authority: explicitAuthority }];
     }
 
     const lookups: PmpIdlLookup[] = [
         {
-            authority: null,
             address: await findPmpMetadataPda(programId, seed, null),
+            authority: null,
         },
     ];
 
     if (IDL_FALLBACK_PMP_AUTHORITY) {
-        const fbAddress = await findPmpMetadataPda(
-            programId,
-            seed,
-            IDL_FALLBACK_PMP_AUTHORITY,
-        );
+        const fbAddress = await findPmpMetadataPda(programId, seed, IDL_FALLBACK_PMP_AUTHORITY);
         if (fbAddress !== lookups[0]!.address) {
             lookups.push({
-                authority: IDL_FALLBACK_PMP_AUTHORITY,
                 address: fbAddress,
+                authority: IDL_FALLBACK_PMP_AUTHORITY,
             });
         }
     }
@@ -87,8 +82,8 @@ export async function fetchPmpIdlContentResolved(
         const content = await tryFetchPmpContent(rpc, programId, seed, lookup.authority);
         if (content) {
             return {
-                content,
                 authority: lookup.authority,
+                content,
                 metadataAddress: lookup.address,
             };
         }

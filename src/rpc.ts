@@ -1,10 +1,8 @@
-import {
-    Address,
-    getBase58Decoder,
-    getBase58Encoder,
-    Rpc,
-    SolanaRpcApi,
-} from '@solana/kit';
+import { Address, getAddressDecoder, getBase58Encoder, getU32Decoder, Rpc, Signature, SolanaRpcApi } from '@solana/kit';
+
+const ADDRESS_DECODER = getAddressDecoder();
+const BASE58_ENCODER = getBase58Encoder();
+const U32_DECODER = getU32Decoder();
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -59,25 +57,18 @@ export type ParsedTx = {
 
 export function fromBase58(b58: string): Uint8Array<ArrayBuffer> {
     try {
-        return new Uint8Array(getBase58Encoder().encode(b58));
+        return BASE58_ENCODER.encode(b58) as Uint8Array<ArrayBuffer>;
     } catch {
         return new Uint8Array(0);
     }
 }
 
 export function readU32LE(bytes: Uint8Array, offset: number): number {
-    return (
-        (bytes[offset] |
-            (bytes[offset + 1] << 8) |
-            (bytes[offset + 2] << 16) |
-            ((bytes[offset + 3] << 24) >>> 0)) >>>
-        0
-    );
+    return U32_DECODER.decode(bytes, offset);
 }
 
 export function rawBytesToAddress(bytes: Uint8Array<ArrayBuffer>, offset: number): Address {
-    const slice = bytes.slice(offset, offset + 32);
-    return getBase58Decoder().decode(slice) as Address;
+    return ADDRESS_DECODER.decode(bytes, offset);
 }
 
 export function writeChunk(
@@ -128,7 +119,7 @@ export function flattenInstructions(tx: ParsedTx): CompiledInstruction[] {
 
 // ─── RPC helpers with retry ──────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
     let lastErr: unknown;
@@ -138,8 +129,7 @@ export async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promis
         } catch (err: unknown) {
             lastErr = err;
             const is429 =
-                err instanceof Error &&
-                (err.message.includes('429') || err.message.includes('Too Many Requests'));
+                err instanceof Error && (err.message.includes('429') || err.message.includes('Too Many Requests'));
             if (!is429 || attempt === maxRetries) throw err;
             const backoff = Math.min(1000 * 2 ** attempt, 15_000);
             await sleep(backoff);
@@ -150,22 +140,16 @@ export async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promis
 
 export async function fetchAllSignatures(rpc: Rpc<SolanaRpcApi>, addr: Address): Promise<SigInfo[]> {
     const all: SigInfo[] = [];
-    let before: string | undefined;
+    let before: Signature | undefined;
 
     for (;;) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const batch = await withRetry(async () =>
-            (await (rpc as any)
-                .getSignaturesForAddress(addr, {
-                    limit: 1000,
-                    ...(before ? { before } : {}),
-                })
-                .send()) as SigInfo[],
-        );
+        const batch = (await withRetry(
+            async () => await rpc.getSignaturesForAddress(addr, { limit: 1000, ...(before ? { before } : {}) }).send(),
+        )) as unknown as SigInfo[];
 
         if (!batch || batch.length === 0) break;
         all.push(...batch);
-        before = batch[batch.length - 1].signature;
+        before = batch[batch.length - 1].signature as Signature;
         if (batch.length < 1000) break;
     }
 
@@ -173,13 +157,8 @@ export async function fetchAllSignatures(rpc: Rpc<SolanaRpcApi>, addr: Address):
 }
 
 export async function fetchTx(rpc: Rpc<SolanaRpcApi>, sig: string): Promise<ParsedTx | null> {
-    return withRetry(async () =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (rpc as any)
-            .getTransaction(sig, {
-                maxSupportedTransactionVersion: 0,
-                encoding: 'json',
-            })
-            .send() as Promise<ParsedTx | null>,
-    );
+    return (await withRetry(
+        async () =>
+            await rpc.getTransaction(sig as Signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }).send(),
+    )) as unknown as ParsedTx | null;
 }

@@ -46,7 +46,7 @@ async function getLastWriteSlot(
 ): Promise<{ slot: string; time: string | null } | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sigs = await (rpc as any)
+    const sigs = await rpc
       .getSignaturesForAddress(account, { limit: 1 })
       .send();
     if (!sigs || sigs.length === 0) return null;

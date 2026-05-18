@@ -1,14 +1,19 @@
-import type { Address } from '@solana/kit';
-import { createSolanaRpc } from '@solana/kit';
-import type { Seed } from '@solana-program/program-metadata';
-import { inflate } from 'node:zlib';
 import { promisify } from 'node:util';
+import { inflate } from 'node:zlib';
+
+import type { Seed } from '@solana-program/program-metadata';
+import type { Address } from '@solana/kit';
+import { createSolanaRpc, fetchEncodedAccount } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
 import { fetchPmpIdlContentResolved } from './pmp-idl.js';
 import { readU32LE } from './rpc.js';
 
 const zlibInflate = promisify(inflate);
+
+// Anchor IDL account layout: [8 disc][32 authority][4 data_len][zlib(idl_json)].
+const ANCHOR_ACCOUNT_HEADER_LEN = 44;
+const ANCHOR_ACCOUNT_LEN_OFFSET = 40;
 
 /** RPC handle from `createSolanaRpc` (mainnet or devnet URLs; PMP isn't deployed on testnet). */
 export type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
@@ -30,27 +35,18 @@ function parseIdlJson(content: string): unknown {
     }
 }
 
-export async function fetchCurrentAnchorIdlString(
-    rpc: SolanaRpcClient,
-    programId: Address,
-): Promise<string | null> {
+export async function fetchCurrentAnchorIdlString(rpc: SolanaRpcClient, programId: Address): Promise<string | null> {
     const idlAddr = await findAnchorIdlAddress(programId);
+    const account = await fetchEncodedAccount(rpc, idlAddr);
+    if (!account.exists) return null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const accountInfo = await (rpc as any)
-        .getAccountInfo(idlAddr, { encoding: 'base64' })
-        .send();
+    const raw = account.data;
+    if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return null;
 
-    if (!accountInfo?.value?.data) return null;
+    const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
+    if (dataLen === 0 || ANCHOR_ACCOUNT_HEADER_LEN + dataLen > raw.length) return null;
 
-    const raw = Buffer.from(accountInfo.value.data[0], 'base64');
-    if (raw.length <= 44) return null;
-
-    // Anchor IDL account layout: 8 discriminator + 32 authority + 4 data_len + data
-    const dataLen = readU32LE(raw, 40);
-    if (dataLen === 0 || 44 + dataLen > raw.length) return null;
-
-    const compressed = raw.slice(44, 44 + dataLen);
+    const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
     const decompressed = await zlibInflate(compressed);
     return decompressed.toString('utf8');
 }
@@ -66,26 +62,21 @@ export async function fetchCurrentIdlPreferPmp(
 ): Promise<CurrentIdlResponse | null> {
     const seed = options?.seed ?? 'idl';
 
-    const pmp = await fetchPmpIdlContentResolved(
-        rpc,
-        programId,
-        seed,
-        options?.authority,
-    );
+    const pmp = await fetchPmpIdlContentResolved(rpc, programId, seed, options?.authority);
     if (pmp) {
         return {
+            idl: parseIdlJson(pmp.content),
             programId: programId as string,
             type: 'pmp',
-            idl: parseIdlJson(pmp.content),
         };
     }
 
     const anchorContent = await fetchCurrentAnchorIdlString(rpc, programId);
     if (anchorContent) {
         return {
+            idl: parseIdlJson(anchorContent),
             programId: programId as string,
             type: 'anchor',
-            idl: parseIdlJson(anchorContent),
         };
     }
 

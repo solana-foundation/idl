@@ -6,3 +6,5 @@ idls-both/
 *.tsbuildinfo
 .env.local
 .next/
+.claude/settings.local.json
+.codex/config.toml
