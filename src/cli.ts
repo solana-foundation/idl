@@ -3,7 +3,7 @@ import fs, { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { Address, createSolanaRpc, type Rpc, type SolanaRpcApi } from '@solana/kit';
+import { Address, createSolanaRpc } from '@solana/kit';
 import { Command } from 'commander';
 import pc from 'picocolors';
 
@@ -19,7 +19,7 @@ const PKG_VERSION: string = (() => {
 })();
 
 import { findAnchorIdlAddress, reconstructAnchorHistory } from './anchor.js';
-import { fetchCurrentIdlPreferPmp } from './current-idl.js';
+import { fetchIdl } from './current-idl.js';
 import { fetchLatestIdls } from './latest-idl.js';
 import { buildPmpIdlLookups } from './pmp-idl.js';
 import {
@@ -27,7 +27,7 @@ import {
     DISC_LABEL,
     ENCODING_NAME,
     FORMAT_NAME,
-    findPmpMetadataPda,
+    findPmpMetadataAddress,
     reconstructPmpHistory,
     type VirtualState,
 } from './program-metadata.js';
@@ -301,7 +301,7 @@ async function runSingle(
         let lastError: Error | null = null;
         for (const lookup of pmpLookups) {
             try {
-                const snaps = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, addr, {
+                const snaps = await reconstructPmpHistory(rpc, addr, {
                     authority: lookup.authority,
                     seed,
                 });
@@ -320,7 +320,7 @@ async function runSingle(
             return;
         }
     } else if (idlType === 'pmp') {
-        targetAddr = await findPmpMetadataPda(addr, seed, authority);
+        targetAddr = await findPmpMetadataAddress(addr, seed, authority);
     } else {
         targetAddr = await findAnchorIdlAddress(addr);
     }
@@ -338,12 +338,12 @@ async function runSingle(
     if (snapshots === null) {
         try {
             if (idlType === 'pmp') {
-                snapshots = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, addr, {
+                snapshots = await reconstructPmpHistory(rpc, addr, {
                     authority,
                     seed,
                 });
             } else {
-                snapshots = await reconstructAnchorHistory(rpc as Rpc<SolanaRpcApi>, addr);
+                snapshots = await reconstructAnchorHistory(rpc, addr);
             }
         } catch (err) {
             console.error(pc.red(`[${idlType.toUpperCase()}] ${(err as Error).message ?? String(err)}`));
@@ -444,7 +444,7 @@ export function buildProgram(): Command {
 
             // ─── Default: bare IDL ─────────────────────────────────────────────────
             if (!opts.history) {
-                const result = await fetchCurrentIdlPreferPmp(rpc, addr, {
+                const result = await fetchIdl(rpc, addr, {
                     seed,
                     ...(authority !== undefined ? { authority } : {}),
                 });

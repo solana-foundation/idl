@@ -4,8 +4,8 @@ import { findMetadataPda, type Seed } from '@solana-program/program-metadata';
  * on-chain write slot and parsed version. This is the single source of truth
  * shared by `GET /api/latest` and the `idl <program> --latest` CLI mode.
  *
- * Resolution rules are the same as the lean {@link fetchCurrentIdlPreferPmp}:
- *   - PMP: canonical first, then non-canonical via `IDL_FALLBACK_PMP_AUTHORITY`.
+ * Resolution rules are the same as the lean {@link fetchIdl}:
+ *   - PMP: canonical first, then non-canonical via `IDL_FALLBACK_PMP_AUTHORITIES`.
  *   - Anchor: PDA derived from the program id.
  *
  * Cost vs. the lean path: one extra `getSignaturesForAddress(_, { limit: 1 })`
@@ -16,16 +16,15 @@ import { findMetadataPda, type Seed } from '@solana-program/program-metadata';
  * preservation (hashing, change detection, stable storage). `JSON.parse` →
  * `JSON.stringify` does not guarantee a byte-for-byte round trip (whitespace,
  * key order, number formatting, escape style can all shift), so we keep what
- * was on chain. Callers that want a parsed view should use
- * {@link fetchCurrentIdlPreferPmp} (or the CLI's bare default mode).
+ * was on chain. Callers that want a parsed view should use {@link fetchIdl}
+ * (or the CLI's bare default mode).
  */
 import type { Address } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
-import { fetchCurrentAnchorIdlString, type SolanaRpcClient } from './current-idl.js';
-import { fetchPmpIdlContentResolved } from './pmp-idl.js';
-
-export type IdlSource = 'pmp' | 'anchor';
+import { fetchAnchorIdl, type IdlSource } from './current-idl.js';
+import { fetchPmpIdl } from './pmp-idl.js';
+import type { SolanaRpcClient } from './rpc.js';
 
 export type LatestIdlVersion = {
     type: IdlSource;
@@ -116,20 +115,20 @@ export async function fetchLatestIdls(
     });
     const anchorAddr = await findAnchorIdlAddress(programId);
 
-    const [pmpResolved, anchorContent] = await Promise.all([
-        fetchPmpIdlContentResolved(rpc, programId, seed, options?.authority),
-        fetchCurrentAnchorIdlString(rpc, programId),
+    const [pmpResolved, anchor] = await Promise.all([
+        fetchPmpIdl(rpc, programId, seed, options?.authority),
+        fetchAnchorIdl(rpc, programId),
     ]);
 
-    const pmpMetadataAddress = pmpResolved?.metadataAddress ?? canonicalPmpPda;
+    const pmpMetadataAddress = pmpResolved?.address ?? canonicalPmpPda;
 
     const [pmpLastWrite, anchorLastWrite] = await Promise.all([
         pmpResolved ? getLastWriteSlot(rpc, pmpMetadataAddress) : null,
-        anchorContent ? getLastWriteSlot(rpc, anchorAddr) : null,
+        anchor ? getLastWriteSlot(rpc, anchorAddr) : null,
     ]);
 
     return {
-        anchor: anchorContent ? [buildVersion('anchor', anchorContent, anchorLastWrite)] : [],
+        anchor: anchor ? [buildVersion('anchor', anchor.content, anchorLastWrite)] : [],
         anchorAddress: anchorAddr as string,
         pmp: pmpResolved ? [buildVersion('pmp', pmpResolved.content, pmpLastWrite)] : [],
         pmpAddress: pmpMetadataAddress as string,

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { inflate } from 'node:zlib';
 
-import { Address, createAddressWithSeed, getProgramDerivedAddress, Rpc, SolanaRpcApi } from '@solana/kit';
+import { Address, createAddressWithSeed, getProgramDerivedAddress } from '@solana/kit';
 
 import {
     fromBase58,
@@ -13,6 +13,7 @@ import {
     fetchAllSignatures,
     fetchTx,
     type Snapshot,
+    type SolanaRpcClient,
     type ParsedTx,
 } from './rpc.js';
 
@@ -142,7 +143,7 @@ function extractWriteData(bytes: Uint8Array, legacy: boolean): Uint8Array<ArrayB
 // ─── Buffer reconstruction (Anchor) ─────────────────────────────────────────
 
 async function reconstructAnchorBufferData(
-    rpc: Rpc<SolanaRpcApi>,
+    rpc: SolanaRpcClient,
     bufferAddr: Address,
     programId: Address,
 ): Promise<Uint8Array<ArrayBuffer>> {
@@ -254,7 +255,7 @@ function cloneAnchorState(s: AnchorIdlState): AnchorIdlState {
 
 // ─── History reconstruction ──────────────────────────────────────────────────
 
-export async function reconstructAnchorHistory(rpc: Rpc<SolanaRpcApi>, programId: Address): Promise<Snapshot[]> {
+export async function reconstructAnchorHistory(rpc: SolanaRpcClient, programId: Address): Promise<Snapshot[]> {
     const idlAddr = await findAnchorIdlAddress(programId);
 
     const sigs = await fetchAllSignatures(rpc, idlAddr);

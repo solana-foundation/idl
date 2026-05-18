@@ -6,7 +6,7 @@ import {
     type Seed,
     unpackDirectData as pmpUnpackDirectData,
 } from '@solana-program/program-metadata';
-import { Address, Rpc, SolanaRpcApi } from '@solana/kit';
+import { Address } from '@solana/kit';
 
 import {
     fromBase58,
@@ -18,6 +18,7 @@ import {
     fetchAllSignatures,
     fetchTx,
     type Snapshot,
+    type SolanaRpcClient,
     type ParsedTx,
     type CompiledInstruction,
 } from './rpc.js';
@@ -76,7 +77,7 @@ export type VirtualState = {
 
 // ─── PDA derivation ──────────────────────────────────────────────────────────
 
-export async function findPmpMetadataPda(
+export async function findPmpMetadataAddress(
     programAddress: Address,
     seed: Seed,
     authority?: Address | null,
@@ -117,7 +118,7 @@ function emptyState(): VirtualState {
 
 // ─── Buffer reconstruction ───────────────────────────────────────────────────
 
-async function reconstructBufferData(rpc: Rpc<SolanaRpcApi>, bufferAddr: Address): Promise<Uint8Array<ArrayBuffer>> {
+async function reconstructBufferData(rpc: SolanaRpcClient, bufferAddr: Address): Promise<Uint8Array<ArrayBuffer>> {
     let data: Uint8Array<ArrayBuffer> = new Uint8Array(0);
 
     const sigs = await fetchAllSignatures(rpc, bufferAddr);
@@ -161,7 +162,7 @@ async function applyInstruction(
     state: VirtualState,
     ix: CompiledInstruction,
     keys: string[],
-    rpc: Rpc<SolanaRpcApi>,
+    rpc: SolanaRpcClient,
 ): Promise<{ next: VirtualState; closed: boolean; name: string }> {
     const bytes = fromBase58(ix.data);
     if (bytes.length === 0) return { closed: false, name: 'Unknown', next: state };
@@ -297,13 +298,13 @@ function tryDecode(state: VirtualState): string | null {
 /**
  * Replay the full PMP write history for one metadata account derived from
  * `(programId, seed, authority)`. Defaults match {@link fetchIdl}: `seed='idl'`,
- * `authority=null` (canonical). Pass `authority: IDL_FALLBACK_PMP_AUTHORITY` to
+ * `authority=null` (canonical). Pass `authority: IDL_FALLBACK_PMP_AUTHORITIES[0]` to
  * walk the non-canonical fndn-fallback history. To enumerate every authority
  * known to this library at once, iterate {@link buildPmpIdlLookups} and call
  * this once per lookup.
  */
 export async function reconstructPmpHistory(
-    rpc: Rpc<SolanaRpcApi>,
+    rpc: SolanaRpcClient,
     programId: Address,
     options?: { seed?: Seed; authority?: Address | null },
 ): Promise<Snapshot[]> {

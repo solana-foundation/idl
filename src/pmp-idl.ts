@@ -1,29 +1,33 @@
 import { fetchMetadataContent, type Seed } from '@solana-program/program-metadata';
 import type { Address } from '@solana/kit';
 
-import type { SolanaRpcClient } from './current-idl.js';
-import { findPmpMetadataPda } from './program-metadata.js';
+import { findPmpMetadataAddress } from './program-metadata.js';
+import type { SolanaRpcClient } from './rpc.js';
 
 /**
- * Non-canonical PMP authority tried after the canonical lookup misses
- * (public key of `UPLOAD_KEYPAIR` in the GitHub Actions workflow).
+ * Non-canonical PMP authorities to try after the canonical lookup misses.
+ * Today this only contains the fndn key (public key of `UPLOAD_KEYPAIR` in the
+ * GitHub Actions workflow), but the array shape lets us add more in the future
+ * without breaking the public API.
  */
-export const IDL_FALLBACK_PMP_AUTHORITY = 'fndnu15PLXELbLsTqrfbiweBvsBj2o12RoVfkeCCbX2' as Address;
+export const IDL_FALLBACK_PMP_AUTHORITIES: readonly Address[] = [
+    'fndnu15PLXELbLsTqrfbiweBvsBj2o12RoVfkeCCbX2' as Address,
+];
 
 export type PmpIdlLookup = {
     authority: Address | null;
     address: Address;
 };
 
-export type ResolvedPmpIdl = {
+export type PmpIdl = {
     content: string;
+    address: Address;
     authority: Address | null;
-    metadataAddress: Address;
 };
 
 /**
- * PMP accounts to try for seed `idl`: canonical first, then the non-canonical
- * fallback using {@link IDL_FALLBACK_PMP_AUTHORITY}.
+ * PMP accounts to try for seed `idl`: canonical first, then each non-canonical
+ * fallback in {@link IDL_FALLBACK_PMP_AUTHORITIES}.
  */
 export async function buildPmpIdlLookups(
     programId: Address,
@@ -31,25 +35,24 @@ export async function buildPmpIdlLookups(
     explicitAuthority?: Address | null,
 ): Promise<PmpIdlLookup[]> {
     if (explicitAuthority !== undefined) {
-        const address = await findPmpMetadataPda(programId, seed, explicitAuthority);
+        const address = await findPmpMetadataAddress(programId, seed, explicitAuthority);
         return [{ address, authority: explicitAuthority }];
     }
 
     const lookups: PmpIdlLookup[] = [
         {
-            address: await findPmpMetadataPda(programId, seed, null),
+            address: await findPmpMetadataAddress(programId, seed, null),
             authority: null,
         },
     ];
 
-    if (IDL_FALLBACK_PMP_AUTHORITY) {
-        const fbAddress = await findPmpMetadataPda(programId, seed, IDL_FALLBACK_PMP_AUTHORITY);
-        if (fbAddress !== lookups[0]!.address) {
-            lookups.push({
-                address: fbAddress,
-                authority: IDL_FALLBACK_PMP_AUTHORITY,
-            });
-        }
+    for (const fallback of IDL_FALLBACK_PMP_AUTHORITIES) {
+        const fbAddress = await findPmpMetadataAddress(programId, seed, fallback);
+        if (lookups.some(l => l.address === fbAddress)) continue;
+        lookups.push({
+            address: fbAddress,
+            authority: fallback,
+        });
     }
 
     return lookups;
@@ -69,22 +72,30 @@ async function tryFetchPmpContent(
     }
 }
 
-/** Canonical PMP, then non-canonical via {@link IDL_FALLBACK_PMP_AUTHORITY}. Anchor handled separately. */
-export async function fetchPmpIdlContentResolved(
+/**
+ * Resolve the live PMP IDL for `programId`. Tries canonical first, then each
+ * fndn / fallback authority in {@link IDL_FALLBACK_PMP_AUTHORITIES}. Returns
+ * `null` if no PMP metadata is published.
+ *
+ * Returns the raw on-chain content as a string (NOT parsed JSON) so callers
+ * that need byte-exact preservation (hashing, diffing) get it. To get a parsed
+ * IDL with Anchor fallback, use {@link fetchIdl} instead.
+ */
+export async function fetchPmpIdl(
     rpc: SolanaRpcClient,
     programId: Address,
     seed: Seed = 'idl',
     explicitAuthority?: Address | null,
-): Promise<ResolvedPmpIdl | null> {
+): Promise<PmpIdl | null> {
     const lookups = await buildPmpIdlLookups(programId, seed, explicitAuthority);
 
     for (const lookup of lookups) {
         const content = await tryFetchPmpContent(rpc, programId, seed, lookup.authority);
         if (content) {
             return {
+                address: lookup.address,
                 authority: lookup.authority,
                 content,
-                metadataAddress: lookup.address,
             };
         }
     }

@@ -99,7 +99,7 @@ Deploy to Vercel by setting the root directory to `web` and adding `RPC_MAINNET`
 
 All endpoints accept a `cluster` parameter (`mainnet-beta` (default) or `devnet`) — query string on `GET`, JSON body on `POST`. A request to a cluster whose RPC env var is unset returns `500` with the missing var name.
 
-**`GET /api/idl?programId=<address>&cluster=<cluster>`** -- Returns the current IDL for a program. Checks PMP first (canonical, then the `IDL_FALLBACK_PMP_AUTHORITY` non-canonical authority), falls back to Anchor.
+**`GET /api/idl?programId=<address>&cluster=<cluster>`** -- Returns the current IDL for a program. Checks PMP first (canonical, then every `IDL_FALLBACK_PMP_AUTHORITIES` non-canonical authority), falls back to Anchor.
 
 ```json
 {

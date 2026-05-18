@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchCurrentIdlPreferPmp } from '@core/current-idl';
+import { fetchIdl } from '@core/current-idl';
 import {
   envVarForCluster,
   parseCluster,
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;
 
-    const result = await fetchCurrentIdlPreferPmp(rpc, addr, { seed: 'idl' });
+    const result = await fetchIdl(rpc, addr, { seed: 'idl' });
 
     if (!result) {
       return NextResponse.json(

@@ -5,9 +5,11 @@ import { fileURLToPath } from 'node:url';
 import type { Address } from '@solana/kit';
 
 import { reconstructAnchorHistory } from '../../src/anchor.js';
-import { IDL_FALLBACK_PMP_AUTHORITY } from '../../src/pmp-idl.js';
+import { IDL_FALLBACK_PMP_AUTHORITIES } from '../../src/pmp-idl.js';
 import { reconstructPmpHistory } from '../../src/program-metadata.js';
 import { makeFakeRpc } from '../fixtures/_helpers/fake-rpc.js';
+
+const FALLBACK_FNDN = IDL_FALLBACK_PMP_AUTHORITIES[0]!;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,7 +44,7 @@ describe('reconstructPmpHistory', () => {
         const rpc = makeFakeRpc(fixturesDir(`${BUYUX}-mainnet-beta`));
 
         const snapshots = await reconstructPmpHistory(rpc, BUYUX, {
-            authority: IDL_FALLBACK_PMP_AUTHORITY,
+            authority: FALLBACK_FNDN,
         });
 
         expect(snapshots).toHaveLength(0);
@@ -52,7 +54,7 @@ describe('reconstructPmpHistory', () => {
         const rpc = makeFakeRpc(fixturesDir(`${TOKEN}-devnet`));
 
         const snapshots = await reconstructPmpHistory(rpc, TOKEN, {
-            authority: IDL_FALLBACK_PMP_AUTHORITY,
+            authority: FALLBACK_FNDN,
         });
 
         expect(snapshots).toHaveLength(11);

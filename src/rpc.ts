@@ -1,10 +1,13 @@
-import { Address, getAddressDecoder, getBase58Encoder, getU32Decoder, Rpc, Signature, SolanaRpcApi } from '@solana/kit';
+import { Address, createSolanaRpc, getAddressDecoder, getBase58Encoder, getU32Decoder, Signature } from '@solana/kit';
 
 const ADDRESS_DECODER = getAddressDecoder();
 const BASE58_ENCODER = getBase58Encoder();
 const U32_DECODER = getU32Decoder();
 
 // ─── Shared types ────────────────────────────────────────────────────────────
+
+/** RPC handle from `createSolanaRpc` (mainnet or devnet URLs; PMP isn't deployed on testnet). */
+export type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
 
 export type Snapshot = {
     slot: bigint;
@@ -138,7 +141,7 @@ export async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promis
     throw lastErr;
 }
 
-export async function fetchAllSignatures(rpc: Rpc<SolanaRpcApi>, addr: Address): Promise<SigInfo[]> {
+export async function fetchAllSignatures(rpc: SolanaRpcClient, addr: Address): Promise<SigInfo[]> {
     const all: SigInfo[] = [];
     let before: Signature | undefined;
 
@@ -156,7 +159,7 @@ export async function fetchAllSignatures(rpc: Rpc<SolanaRpcApi>, addr: Address):
     return all.reverse();
 }
 
-export async function fetchTx(rpc: Rpc<SolanaRpcApi>, sig: string): Promise<ParsedTx | null> {
+export async function fetchTx(rpc: SolanaRpcClient, sig: string): Promise<ParsedTx | null> {
     return (await withRetry(
         async () =>
             await rpc.getTransaction(sig as Signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }).send(),

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 /**
  * End-to-end equivalence test: the `idl <program>` CLI and the library export
- * `fetchCurrentIdlPreferPmp` (bare mode) / `fetchLatestIdls` (`--latest` mode)
+ * `fetchIdl` (bare mode) / `fetchLatestIdls` (`--latest` mode)
  * MUST produce byte-identical results for the same program against the same
  * fixture bucket.
  *
@@ -112,9 +112,9 @@ describe('CLI ↔ library equivalence on BUYux', () => {
         });
 
         it('matches the .idl field of the library result byte-for-byte', async () => {
-            const { fetchCurrentIdlPreferPmp } = await import('../../src/index.js');
+            const { fetchIdl } = await import('../../src/index.js');
 
-            const libResult = await fetchCurrentIdlPreferPmp(makeFakeRpc(BUCKET), BUYUX);
+            const libResult = await fetchIdl(makeFakeRpc(BUCKET), BUYUX);
             expect(libResult).not.toBeNull();
 
             const { stdout } = await runCliCaptured([BUYUX, '--rpc', 'http://mocked.invalid/']);

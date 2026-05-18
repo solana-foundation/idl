@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { findMetadataPda } from '@solana-program/program-metadata';
-import { reconstructPmpHistory } from '@core/program-metadata';
-import { reconstructAnchorHistory, findAnchorIdlAddress } from '@core/anchor';
-import { buildPmpIdlLookups } from '@core/pmp-idl';
+import { fetchAllHistories } from '@core/history';
 import type { Snapshot } from '@core/rpc';
 import {
   envVarForCluster,
@@ -114,42 +111,14 @@ export async function POST(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;
 
-    const [canonicalPmpPda] = await findMetadataPda({
-      program: addr,
-      authority: null,
-      seed: 'idl',
-    });
-    const anchorAddr = await findAnchorIdlAddress(addr);
-    const pmpLookups = await buildPmpIdlLookups(addr, 'idl');
-    let pmpPda = canonicalPmpPda;
-    let pmpVersions: IdlVersion[] = [];
-
-    for (const lookup of pmpLookups) {
-      try {
-        const snaps = await reconstructPmpHistory(rpc, addr, {
-          authority: lookup.authority,
-          seed: 'idl',
-        });
-        if (snaps.length > 0) {
-          pmpVersions = extractVersions(snaps, 'pmp');
-          pmpPda = lookup.address;
-          break;
-        }
-      } catch {
-        /* try next lookup */
-      }
-    }
-
-    const anchorVersions = await reconstructAnchorHistory(rpc, addr)
-      .then((snaps) => extractVersions(snaps, 'anchor'))
-      .catch(() => [] as IdlVersion[]);
+    const histories = await fetchAllHistories(rpc, addr);
 
     return NextResponse.json({
       programId,
-      pmpAddress: pmpPda,
-      anchorAddress: anchorAddr,
-      pmp: pmpVersions,
-      anchor: anchorVersions,
+      pmpAddress: histories.pmpAddress,
+      anchorAddress: histories.anchorAddress,
+      pmp: extractVersions(histories.pmp, 'pmp'),
+      anchor: extractVersions(histories.anchor, 'anchor'),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

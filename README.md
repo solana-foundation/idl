@@ -25,55 +25,45 @@ bun add @solana/idl @solana/kit
 
 ```ts
 import { createSolanaRpc, address } from '@solana/kit';
-import {
-    fetchCurrentIdlPreferPmp,
-    fetchLatestIdls,
-    reconstructAnchorHistory,
-    reconstructPmpHistory,
-    buildPmpIdlLookups,
-} from '@solana/idl';
+import { fetchIdl, fetchLatestIdls, fetchAllHistories } from '@solana/idl';
 
 const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
 const programId = address('BUYuxRfhCMWavaUWxhGtPP3ksKEDZxCD5gzknk3JfAya');
 
 // Lean: just the current IDL (canonical PMP → fndn fallback PMP → Anchor).
 // Same as GET /api/idl.
-const current = await fetchCurrentIdlPreferPmp(rpc, programId);
+const current = await fetchIdl(rpc, programId);
 if (current) console.log(current.type, current.idl);
 
 // Rich: PMP + Anchor side-by-side with slot/time/version. Same as GET /api/latest.
 const latest = await fetchLatestIdls(rpc, programId);
 console.log(latest.pmp[0]?.slot, latest.anchor[0]?.slot);
 
-// Full PMP history (defaults to canonical). For non-canonical authorities,
-// pass `{ authority }`. Most published IDLs live under the fndn fallback, so
-// to cover both you can iterate `buildPmpIdlLookups` and keep the first
-// non-empty result:
-const lookups = await buildPmpIdlLookups(programId, 'idl');
-let pmpHistory: Awaited<ReturnType<typeof reconstructPmpHistory>> = [];
-for (const { authority } of lookups) {
-    pmpHistory = await reconstructPmpHistory(rpc, programId, { authority });
-    if (pmpHistory.length > 0) break;
-}
-
-// Full Anchor history.
-const anchorHistory = await reconstructAnchorHistory(rpc, programId);
+// Full history of every revision, both PMP and Anchor side-by-side.
+// Same as POST /api/history.
+const history = await fetchAllHistories(rpc, programId);
+console.log(history.pmp.length, 'PMP snapshots');
+console.log(history.anchor.length, 'Anchor snapshots');
 ```
+
+For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or `reconstructAnchorHistory(rpc, programId)` directly.
 
 ### Exports
 
-| Export                                             | Purpose                                                              |
-| -------------------------------------------------- | -------------------------------------------------------------------- |
-| `fetchCurrentIdlPreferPmp`                         | Live IDL, PMP-first with fndn fallback then Anchor fallback          |
-| `fetchLatestIdls`                                  | PMP + Anchor side-by-side with version/slot/time (powers `--latest`) |
-| `fetchCurrentAnchorIdlString`                      | Latest raw Anchor IDL string only                                    |
-| `reconstructPmpHistory`                            | Replay PMP transactions into a history of `VirtualState` snapshots   |
-| `reconstructAnchorHistory`                         | Replay Anchor IDL transactions into a history of snapshots           |
-| `findAnchorIdlAddress`, `findPmpMetadataPda`       | PDA derivation helpers                                               |
-| `buildPmpIdlLookups`, `fetchPmpIdlContentResolved` | Lower-level PMP resolution                                           |
-| `IDL_FALLBACK_PMP_AUTHORITY`                       | Non-canonical PMP authority baked into `fetchCurrentIdlPreferPmp`    |
+| Export                                           | Purpose                                                                      |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `fetchIdl`                                       | Live IDL, PMP-first with fndn fallback then Anchor fallback                  |
+| `fetchAnchorIdl`                                 | Live Anchor IDL only: `{ content, address }`                                 |
+| `fetchPmpIdl`                                    | Live PMP IDL only: `{ content, address, authority }` (canonical then fndn)   |
+| `fetchLatestIdls`                                | PMP + Anchor side-by-side with version/slot/time (powers `--latest`)         |
+| `fetchAllHistories`                              | Full PMP + Anchor history side-by-side (powers `--history` / `/api/history`) |
+| `reconstructPmpHistory`                          | Replay PMP transactions into a history of `VirtualState` snapshots           |
+| `reconstructAnchorHistory`                       | Replay Anchor IDL transactions into a history of snapshots                   |
+| `findAnchorIdlAddress`, `findPmpMetadataAddress` | PDA derivation helpers                                                       |
+| `buildPmpIdlLookups`                             | Enumerate PMP PDAs to try (canonical + every fndn fallback)                  |
+| `IDL_FALLBACK_PMP_AUTHORITIES`                   | Array of non-canonical PMP authorities baked into `fetchIdl` / `fetchPmpIdl` |
 
-Types: `CurrentIdlResponse`, `CurrentIdlSource`, `SolanaRpcClient`, `LatestIdls`, `LatestIdlVersion`, `IdlSource`, `VirtualState`, `Snapshot`, `PmpIdlLookup`, `ResolvedPmpIdl`.
+Types: `Idl`, `IdlSource`, `AnchorIdl`, `PmpIdl`, `PmpIdlLookup`, `LatestIdls`, `LatestIdlVersion`, `AllHistories`, `VirtualState`, `Snapshot`, `SolanaRpcClient`.
 
 ## CLI
 
@@ -81,7 +71,7 @@ The `idl` binary mirrors the library and has three modes, each backed by the sam
 
 | Mode                     | Flag        | Output                                                                                           | Backing function                                     | API parity          |
 | ------------------------ | ----------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------- | ------------------- |
-| **Bare IDL** _(default)_ | _(none)_    | Just the IDL body on stdout — pretty JSON if parsable, otherwise the raw string                  | `fetchCurrentIdlPreferPmp`                           | `GET /api/idl`      |
+| **Bare IDL** _(default)_ | _(none)_    | Just the IDL body on stdout — pretty JSON if parsable, otherwise the raw string                  | `fetchIdl`                                           | `GET /api/idl`      |
 | **Latest side-by-side**  | `--latest`  | `{programId, pmpAddress, anchorAddress, pmp[], anchor[]}` with version/slot/time for each source | `fetchLatestIdls`                                    | `GET /api/latest`   |
 | **Full history**         | `--history` | Pretty timeline of every revision (plus optional `--output` / `--dump-idls`)                     | `reconstructPmpHistory` / `reconstructAnchorHistory` | `POST /api/history` |
 
@@ -189,14 +179,14 @@ The history APIs (`reconstructAnchorHistory` / `reconstructPmpHistory`) replay e
 - **Anchor**: legacy IDL instructions and Anchor 0.30+ instructions — `Create`, `CreateBuffer`, `Write`, `SetBuffer`, `SetAuthority`, `Close`, and the `idl_*` variants. Buffer payloads are reconstructed by replaying writes to those accounts.
 - **PMP**: SPL Program Metadata instructions — `Allocate`, `Write`, `Initialize`, `SetData`, `SetAuthority`, `SetImmutable`, `Trim`, `Close`, `Extend`.
 
-The live paths (`fetchCurrentIdlPreferPmp` / `fetchLatestIdls`) skip replay and read live chain state, so they are dramatically cheaper than a full history scan.
+The live paths (`fetchIdl` / `fetchLatestIdls`) skip replay and read live chain state, so they are dramatically cheaper than a full history scan.
 
 ## IDL resolution order
 
-`fetchCurrentIdlPreferPmp` (and the bare CLI mode) resolve in this order:
+`fetchIdl` (and the bare CLI mode) resolve in this order:
 
 1. **Canonical PMP** with the requested seed (default `idl`).
-2. **Non-canonical PMP** using `IDL_FALLBACK_PMP_AUTHORITY` (`fndnu15…`).
+2. **Non-canonical PMP** for every entry of `IDL_FALLBACK_PMP_AUTHORITIES` (currently just `fndnu15…`).
 3. **Anchor** IDL account.
 
 Returns `null` if none resolves.
@@ -219,10 +209,8 @@ bun run record:fixtures -- TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA  devnet
 
 The recorder reuses any fixture already on disk, so reruns only fetch what's missing.
 
-Run the live-RPC integration suite by setting `RPC_URL`:
-
 ```bash
-RPC_URL=https://api.mainnet-beta.solana.com bun run test:integration
+bun run test:integration    # only the integration suite (fixture-backed, offline)
 ```
 
 ## License

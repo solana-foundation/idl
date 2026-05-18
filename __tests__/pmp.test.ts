@@ -2,51 +2,54 @@ import { describe, expect, test } from 'bun:test';
 
 import { address, isAddress } from '@solana/kit';
 
-import type { SolanaRpcClient } from '../src/current-idl.js';
-import { buildPmpIdlLookups, fetchPmpIdlContentResolved, IDL_FALLBACK_PMP_AUTHORITY } from '../src/pmp-idl.js';
+import { buildPmpIdlLookups, fetchPmpIdl, IDL_FALLBACK_PMP_AUTHORITIES } from '../src/pmp-idl.js';
 import {
     COMPRESSION_NAME,
     DISC_LABEL,
     ENCODING_NAME,
     FORMAT_NAME,
     PROGRAM_METADATA_PROGRAM_ADDRESS,
-    findPmpMetadataPda,
+    findPmpMetadataAddress,
 } from '../src/program-metadata.js';
+import type { SolanaRpcClient } from '../src/rpc.js';
 
 const PROGRAM = address('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const FALLBACK_FNDN = IDL_FALLBACK_PMP_AUTHORITIES[0]!;
 
-describe('findPmpMetadataPda', () => {
+describe('findPmpMetadataAddress', () => {
     test('canonical (no authority) is deterministic', async () => {
-        const a = await findPmpMetadataPda(PROGRAM, 'idl');
-        const b = await findPmpMetadataPda(PROGRAM, 'idl', null);
+        const a = await findPmpMetadataAddress(PROGRAM, 'idl');
+        const b = await findPmpMetadataAddress(PROGRAM, 'idl', null);
         expect(a).toBe(b);
     });
 
     test('different seeds produce different PDAs', async () => {
-        const a = await findPmpMetadataPda(PROGRAM, 'idl');
-        const b = await findPmpMetadataPda(PROGRAM, 'custom');
+        const a = await findPmpMetadataAddress(PROGRAM, 'idl');
+        const b = await findPmpMetadataAddress(PROGRAM, 'custom');
         expect(a).not.toBe(b);
     });
 
     test('non-canonical (with authority) differs from canonical', async () => {
-        const canonical = await findPmpMetadataPda(PROGRAM, 'idl', null);
-        const nonCanonical = await findPmpMetadataPda(PROGRAM, 'idl', IDL_FALLBACK_PMP_AUTHORITY);
+        const canonical = await findPmpMetadataAddress(PROGRAM, 'idl', null);
+        const nonCanonical = await findPmpMetadataAddress(PROGRAM, 'idl', FALLBACK_FNDN);
         expect(canonical).not.toBe(nonCanonical);
     });
 });
 
 describe('buildPmpIdlLookups', () => {
-    test('default returns canonical + fallback', async () => {
+    test('default returns canonical + every fndn fallback', async () => {
         const lookups = await buildPmpIdlLookups(PROGRAM, 'idl');
-        expect(lookups).toHaveLength(2);
+        expect(lookups).toHaveLength(1 + IDL_FALLBACK_PMP_AUTHORITIES.length);
         expect(lookups[0]!.authority).toBeNull();
-        expect(lookups[1]!.authority).toBe(IDL_FALLBACK_PMP_AUTHORITY);
+        for (let i = 0; i < IDL_FALLBACK_PMP_AUTHORITIES.length; i++) {
+            expect(lookups[i + 1]!.authority).toBe(IDL_FALLBACK_PMP_AUTHORITIES[i]!);
+        }
     });
 
     test('explicit authority short-circuits to a single lookup', async () => {
-        const lookups = await buildPmpIdlLookups(PROGRAM, 'idl', IDL_FALLBACK_PMP_AUTHORITY);
+        const lookups = await buildPmpIdlLookups(PROGRAM, 'idl', FALLBACK_FNDN);
         expect(lookups).toHaveLength(1);
-        expect(lookups[0]!.authority).toBe(IDL_FALLBACK_PMP_AUTHORITY);
+        expect(lookups[0]!.authority).toBe(FALLBACK_FNDN);
     });
 
     test('explicit null authority forces canonical-only', async () => {
@@ -57,8 +60,11 @@ describe('buildPmpIdlLookups', () => {
 });
 
 describe('PMP constants', () => {
-    test('IDL_FALLBACK_PMP_AUTHORITY is a valid address', () => {
-        expect(isAddress(IDL_FALLBACK_PMP_AUTHORITY)).toBe(true);
+    test('every IDL_FALLBACK_PMP_AUTHORITIES entry is a valid address', () => {
+        expect(IDL_FALLBACK_PMP_AUTHORITIES.length).toBeGreaterThan(0);
+        for (const a of IDL_FALLBACK_PMP_AUTHORITIES) {
+            expect(isAddress(a)).toBe(true);
+        }
     });
 
     test('PROGRAM_METADATA_PROGRAM_ADDRESS is a valid address', () => {
@@ -73,10 +79,10 @@ describe('PMP constants', () => {
     });
 });
 
-describe('fetchPmpIdlContentResolved', () => {
+describe('fetchPmpIdl', () => {
     test('returns null when no lookup yields content', async () => {
         const stubRpc = {} as SolanaRpcClient;
-        const out = await fetchPmpIdlContentResolved(stubRpc, PROGRAM, 'idl', null);
+        const out = await fetchPmpIdl(stubRpc, PROGRAM, 'idl', null);
         expect(out).toBeNull();
     });
 });

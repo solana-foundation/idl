@@ -3,11 +3,11 @@ import { inflate } from 'node:zlib';
 
 import type { Seed } from '@solana-program/program-metadata';
 import type { Address } from '@solana/kit';
-import { createSolanaRpc, fetchEncodedAccount } from '@solana/kit';
+import { fetchEncodedAccount } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
-import { fetchPmpIdlContentResolved } from './pmp-idl.js';
-import { readU32LE } from './rpc.js';
+import { fetchPmpIdl } from './pmp-idl.js';
+import { readU32LE, type SolanaRpcClient } from './rpc.js';
 
 const zlibInflate = promisify(inflate);
 
@@ -15,15 +15,21 @@ const zlibInflate = promisify(inflate);
 const ANCHOR_ACCOUNT_HEADER_LEN = 44;
 const ANCHOR_ACCOUNT_LEN_OFFSET = 40;
 
-/** RPC handle from `createSolanaRpc` (mainnet or devnet URLs; PMP isn't deployed on testnet). */
-export type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
+export type IdlSource = 'pmp' | 'anchor';
 
-export type CurrentIdlSource = 'pmp' | 'anchor';
+export type AnchorIdl = {
+    content: string;
+    address: Address;
+};
 
-export type CurrentIdlResponse = {
+/**
+ * Result of {@link fetchIdl}: a parsed IDL with the source (`pmp`/`anchor`)
+ * that produced it and the program it belongs to.
+ */
+export type Idl = {
     programId: string;
-    type: CurrentIdlSource;
-    /** Parsed JSON when valid JSON, otherwise raw string */
+    type: IdlSource;
+    /** Parsed JSON when the on-chain content is valid JSON, otherwise the raw string. */
     idl: unknown;
 };
 
@@ -35,7 +41,12 @@ function parseIdlJson(content: string): unknown {
     }
 }
 
-export async function fetchCurrentAnchorIdlString(rpc: SolanaRpcClient, programId: Address): Promise<string | null> {
+/**
+ * Resolve the live Anchor IDL for `programId`. Returns the raw decompressed
+ * JSON string and the IDL account address, or `null` if no Anchor IDL is
+ * published. Use {@link fetchIdl} for the higher-level PMP-first flow.
+ */
+export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): Promise<AnchorIdl | null> {
     const idlAddr = await findAnchorIdlAddress(programId);
     const account = await fetchEncodedAccount(rpc, idlAddr);
     if (!account.exists) return null;
@@ -48,21 +59,25 @@ export async function fetchCurrentAnchorIdlString(rpc: SolanaRpcClient, programI
 
     const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
     const decompressed = await zlibInflate(compressed);
-    return decompressed.toString('utf8');
+    return {
+        address: idlAddr,
+        content: decompressed.toString('utf8'),
+    };
 }
 
 /**
  * Resolve the live on-chain IDL the same way as `GET /api/idl`: try PMP first
- * (canonical PMP, then non-canonical via the IDL fallback authority), then Anchor.
+ * (canonical PMP, then non-canonical via the IDL fallback authorities), then
+ * fall back to Anchor.
  */
-export async function fetchCurrentIdlPreferPmp(
+export async function fetchIdl(
     rpc: SolanaRpcClient,
     programId: Address,
     options?: { seed?: Seed; authority?: Address | null },
-): Promise<CurrentIdlResponse | null> {
+): Promise<Idl | null> {
     const seed = options?.seed ?? 'idl';
 
-    const pmp = await fetchPmpIdlContentResolved(rpc, programId, seed, options?.authority);
+    const pmp = await fetchPmpIdl(rpc, programId, seed, options?.authority);
     if (pmp) {
         return {
             idl: parseIdlJson(pmp.content),
@@ -71,10 +86,10 @@ export async function fetchCurrentIdlPreferPmp(
         };
     }
 
-    const anchorContent = await fetchCurrentAnchorIdlString(rpc, programId);
-    if (anchorContent) {
+    const anchor = await fetchAnchorIdl(rpc, programId);
+    if (anchor) {
         return {
-            idl: parseIdlJson(anchorContent),
+            idl: parseIdlJson(anchor.content),
             programId: programId as string,
             type: 'anchor',
         };
