@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Address } from '@solana/kit';
 
 import { reconstructAnchorHistory } from '../../src/anchor.js';
-import { IDL_FALLBACK_PMP_AUTHORITY, buildPmpIdlLookups } from '../../src/pmp-idl.js';
+import { IDL_FALLBACK_PMP_AUTHORITY } from '../../src/pmp-idl.js';
 import { reconstructPmpHistory } from '../../src/program-metadata.js';
 import { makeFakeRpc } from '../fixtures/_helpers/fake-rpc.js';
 
@@ -19,11 +19,8 @@ const fixturesDir = (slug: string): string => path.resolve(HERE, '../fixtures', 
 describe('reconstructPmpHistory', () => {
     it('returns canonical PMP history for BUYux on mainnet', async () => {
         const rpc = makeFakeRpc(fixturesDir(`${BUYUX}-mainnet-beta`));
-        const lookups = await buildPmpIdlLookups(BUYUX, 'idl');
-        const canonical = lookups.find(l => l.authority === null);
-        expect(canonical).toBeDefined();
 
-        const snapshots = await reconstructPmpHistory(rpc, canonical!.address);
+        const snapshots = await reconstructPmpHistory(rpc, BUYUX);
 
         expect(snapshots).toHaveLength(3);
         for (const snap of snapshots) {
@@ -43,21 +40,20 @@ describe('reconstructPmpHistory', () => {
 
     it('returns 0 snapshots on the unused fndn fallback PDA for BUYux', async () => {
         const rpc = makeFakeRpc(fixturesDir(`${BUYUX}-mainnet-beta`));
-        const lookups = await buildPmpIdlLookups(BUYUX, 'idl');
-        const fallback = lookups.find(l => l.authority === IDL_FALLBACK_PMP_AUTHORITY);
-        expect(fallback).toBeDefined();
 
-        const snapshots = await reconstructPmpHistory(rpc, fallback!.address);
+        const snapshots = await reconstructPmpHistory(rpc, BUYUX, {
+            authority: IDL_FALLBACK_PMP_AUTHORITY,
+        });
+
         expect(snapshots).toHaveLength(0);
     });
 
     it('returns fndn-uploaded PMP history for TokenkegQ on devnet', async () => {
         const rpc = makeFakeRpc(fixturesDir(`${TOKEN}-devnet`));
-        const lookups = await buildPmpIdlLookups(TOKEN, 'idl');
-        const fallback = lookups.find(l => l.authority === IDL_FALLBACK_PMP_AUTHORITY);
-        expect(fallback).toBeDefined();
 
-        const snapshots = await reconstructPmpHistory(rpc, fallback!.address);
+        const snapshots = await reconstructPmpHistory(rpc, TOKEN, {
+            authority: IDL_FALLBACK_PMP_AUTHORITY,
+        });
 
         expect(snapshots).toHaveLength(11);
         for (let i = 1; i < snapshots.length; i++) {
@@ -67,11 +63,9 @@ describe('reconstructPmpHistory', () => {
 
     it('returns 0 snapshots on the canonical PDA for TokenkegQ (no canonical upload)', async () => {
         const rpc = makeFakeRpc(fixturesDir(`${TOKEN}-devnet`));
-        const lookups = await buildPmpIdlLookups(TOKEN, 'idl');
-        const canonical = lookups.find(l => l.authority === null);
-        expect(canonical).toBeDefined();
 
-        const snapshots = await reconstructPmpHistory(rpc, canonical!.address);
+        const snapshots = await reconstructPmpHistory(rpc, TOKEN);
+
         expect(snapshots).toHaveLength(0);
     });
 });

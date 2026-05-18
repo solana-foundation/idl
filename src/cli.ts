@@ -301,7 +301,10 @@ async function runSingle(
         let lastError: Error | null = null;
         for (const lookup of pmpLookups) {
             try {
-                const snaps = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, lookup.address);
+                const snaps = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, addr, {
+                    authority: lookup.authority,
+                    seed,
+                });
                 if (snaps.length > 0) {
                     targetAddr = lookup.address;
                     pmpAuthority = lookup.authority;
@@ -335,7 +338,10 @@ async function runSingle(
     if (snapshots === null) {
         try {
             if (idlType === 'pmp') {
-                snapshots = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, targetAddr);
+                snapshots = await reconstructPmpHistory(rpc as Rpc<SolanaRpcApi>, addr, {
+                    authority,
+                    seed,
+                });
             } else {
                 snapshots = await reconstructAnchorHistory(rpc as Rpc<SolanaRpcApi>, addr);
             }

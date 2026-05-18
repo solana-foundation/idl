@@ -126,7 +126,10 @@ export async function POST(req: NextRequest) {
 
     for (const lookup of pmpLookups) {
       try {
-        const snaps = await reconstructPmpHistory(rpc, lookup.address);
+        const snaps = await reconstructPmpHistory(rpc, addr, {
+          authority: lookup.authority,
+          seed: 'idl',
+        });
         if (snaps.length > 0) {
           pmpVersions = extractVersions(snaps, 'pmp');
           pmpPda = lookup.address;

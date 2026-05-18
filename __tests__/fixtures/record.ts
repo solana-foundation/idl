@@ -103,7 +103,9 @@ async function recordProgram(programId: Address, cluster: Cluster): Promise<void
     const lookups = await buildPmpIdlLookups(programId, 'idl');
     for (const lookup of lookups) {
         const tag = lookup.authority ?? '<canonical>';
-        const history = await reconstructPmpHistory(rpc, lookup.address);
+        const history = await reconstructPmpHistory(rpc, programId, {
+            authority: lookup.authority,
+        });
         console.log(`    · ${tag} → ${history.length} snapshots`);
     }
 

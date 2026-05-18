@@ -122,7 +122,6 @@ import { createSolanaRpc } from '@solana/kit';
 import {
   reconstructPmpHistory,
   reconstructAnchorHistory,
-  findPmpMetadataPda,
   findAnchorIdlAddress,
 } from '@solana/idl';
 
@@ -131,9 +130,8 @@ const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
 // Anchor IDL history
 const snapshots = await reconstructAnchorHistory(rpc, programAddress);
 
-// PMP IDL history
-const pda = await findPmpMetadataPda(programAddress, 'idl');
-const pmpSnapshots = await reconstructPmpHistory(rpc, pda);
+// PMP IDL history (defaults to canonical authority + seed 'idl')
+const pmpSnapshots = await reconstructPmpHistory(rpc, programAddress);
 ```
 
 ## How It Works

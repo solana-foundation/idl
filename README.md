@@ -45,14 +45,14 @@ if (current) console.log(current.type, current.idl);
 const latest = await fetchLatestIdls(rpc, programId);
 console.log(latest.pmp[0]?.slot, latest.anchor[0]?.slot);
 
-// Full PMP history. Most published IDLs live under the non-canonical fallback
-// authority, so try every candidate PDA (canonical + fallback) and keep the
-// first non-empty history. Pass an explicit authority to `buildPmpIdlLookups`
-// if you uploaded under a custom one.
+// Full PMP history (defaults to canonical). For non-canonical authorities,
+// pass `{ authority }`. Most published IDLs live under the fndn fallback, so
+// to cover both you can iterate `buildPmpIdlLookups` and keep the first
+// non-empty result:
 const lookups = await buildPmpIdlLookups(programId, 'idl');
 let pmpHistory: Awaited<ReturnType<typeof reconstructPmpHistory>> = [];
-for (const { address: pda } of lookups) {
-    pmpHistory = await reconstructPmpHistory(rpc, pda);
+for (const { authority } of lookups) {
+    pmpHistory = await reconstructPmpHistory(rpc, programId, { authority });
     if (pmpHistory.length > 0) break;
 }
 

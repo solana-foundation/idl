@@ -294,7 +294,26 @@ function tryDecode(state: VirtualState): string | null {
 
 // ─── History reconstruction ──────────────────────────────────────────────────
 
-export async function reconstructPmpHistory(rpc: Rpc<SolanaRpcApi>, metadataAddr: Address): Promise<Snapshot[]> {
+/**
+ * Replay the full PMP write history for one metadata account derived from
+ * `(programId, seed, authority)`. Defaults match {@link fetchIdl}: `seed='idl'`,
+ * `authority=null` (canonical). Pass `authority: IDL_FALLBACK_PMP_AUTHORITY` to
+ * walk the non-canonical fndn-fallback history. To enumerate every authority
+ * known to this library at once, iterate {@link buildPmpIdlLookups} and call
+ * this once per lookup.
+ */
+export async function reconstructPmpHistory(
+    rpc: Rpc<SolanaRpcApi>,
+    programId: Address,
+    options?: { seed?: Seed; authority?: Address | null },
+): Promise<Snapshot[]> {
+    const seed: Seed = options?.seed ?? 'idl';
+    const [metadataAddr] = await findMetadataPda({
+        authority: options?.authority ?? null,
+        program: programId,
+        seed,
+    });
+
     const sigs = await fetchAllSignatures(rpc, metadataAddr);
     const snapshots: Snapshot[] = [];
     let state = emptyState();
