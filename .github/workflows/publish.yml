@@ -67,7 +67,7 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        run: npm install --no-package-lock
+        run: npm ci
 
       - name: Get version
         id: version

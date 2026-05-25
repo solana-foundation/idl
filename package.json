@@ -55,7 +55,7 @@
         "test": "bun test --timeout 60000",
         "test:integration": "bun test --timeout 120000 __tests__/integration",
         "typecheck": "tsc --noEmit",
-        "prepack": "bun run clean && bun run build"
+        "prepack": "npm run clean && npm run build"
     },
     "dependencies": {
         "@solana-program/program-metadata": "^0.5.1",
