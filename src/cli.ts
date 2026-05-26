@@ -372,10 +372,21 @@ async function runSingle(
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Optional dependency-injection seam used by the test suite. Production
+ * callers leave this unset and the CLI falls back to `createSolanaRpc` from
+ * `@solana/kit`. Tests pass `{ rpcFactory: () => makeFakeRpc(...) }` to drive
+ * the CLI against recorded fixtures without mocking the kit module.
+ */
+export type RunCliOptions = {
+    rpcFactory?: (rpcUrl: string) => ReturnType<typeof createSolanaRpc>;
+};
+
+/**
  * Build a fresh commander instance. Exported as a function (rather than a
  * singleton) so each test invocation gets clean parser state.
  */
-export function buildProgram(): Command {
+export function buildProgram(options: RunCliOptions = {}): Command {
+    const rpcFactory = options.rpcFactory ?? createSolanaRpc;
     return new Command()
         .name('idl')
         .description(
@@ -405,7 +416,7 @@ export function buildProgram(): Command {
                 process.exit(1);
             }
 
-            const rpc = createSolanaRpc(rpcUrl);
+            const rpc = rpcFactory(rpcUrl);
             const addr = programAddress as Address;
             const seed: string = opts.seed ?? 'idl';
             const authority: Address | undefined = opts.authority ? (opts.authority as Address) : undefined;
@@ -496,9 +507,12 @@ export function buildProgram(): Command {
  * Parse and run the CLI with the given argv (defaults to `process.argv`).
  * Returns a promise that resolves when the action completes — including async
  * actions — which makes it usable from tests and from the binary entrypoint.
+ *
+ * Pass `{ rpcFactory }` from tests to swap `createSolanaRpc` for a fake
+ * fixture-backed RPC without having to mock `@solana/kit`.
  */
-export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
-    await buildProgram().parseAsync(argv, { from: 'user' });
+export async function runCli(argv: string[] = process.argv.slice(2), options: RunCliOptions = {}): Promise<void> {
+    await buildProgram(options).parseAsync(argv, { from: 'user' });
 }
 
 /**

@@ -49,14 +49,14 @@
     "scripts": {
         "build": "tsup && tsc --project tsconfig.build.json",
         "clean": "rm -rf dist *.tsbuildinfo",
-        "dev": "bun run src/cli.ts",
+        "dev": "tsx src/cli.ts",
         "format": "oxfmt",
         "format:check": "oxfmt --check",
         "lint": "oxlint && oxfmt --check",
         "lint:fix": "oxlint --fix && oxfmt",
-        "test": "bun test --timeout 60000",
-        "test:integration": "bun test --timeout 120000 __tests__/integration",
-        "record:fixtures": "bun run __tests__/fixtures/record.ts",
+        "test": "vitest run",
+        "test:integration": "vitest run __tests__/integration",
+        "record:fixtures": "tsx __tests__/fixtures/record.ts",
         "typecheck": "tsc --noEmit",
         "prepack": "npm run clean && npm run build"
     },
@@ -68,18 +68,20 @@
     "devDependencies": {
         "@solana-config/oxc": "^0.1.1",
         "@solana/kit": "^6.8.0",
-        "@types/bun": "^1.1.0",
         "@types/node": "^22.0.0",
         "oxfmt": "^0.50.0",
         "oxlint": "^1.65.0",
         "oxlint-tsgolint": "^0.22.1",
         "tsup": "^8.5.1",
-        "typescript": "^5.7.0"
+        "tsx": "^4.20.0",
+        "typescript": "^5.7.0",
+        "vitest": "^3.0.0"
     },
     "peerDependencies": {
         "@solana/kit": "^6.0.0"
     },
     "engines": {
         "node": ">=20"
-    }
+    },
+    "packageManager": "pnpm@10.0.0"
 }

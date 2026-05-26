@@ -4,10 +4,10 @@
  * then replay the same fixtures offline.
  *
  * Usage:
- *   bun run __tests__/fixtures/record.ts <program-id> <cluster>
+ *   pnpm run record:fixtures <program-id> <cluster>
  *
- *   bun run __tests__/fixtures/record.ts BUYuxRfhCMWavaUWxhGtPP3ksKEDZxCD5gzknk3JfAya mainnet-beta
- *   bun run __tests__/fixtures/record.ts TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA  devnet
+ *   pnpm run record:fixtures BUYuxRfhCMWavaUWxhGtPP3ksKEDZxCD5gzknk3JfAya mainnet-beta
+ *   pnpm run record:fixtures TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA  devnet
  *
  * RPC URLs are read from `RPC_MAINNET` / `RPC_DEVNET`. The script falls back
  * to `web/.env.local` if those env vars are not set in the shell, and finally
@@ -137,7 +137,7 @@ async function recordProgram(programId: Address, cluster: Cluster): Promise<void
 async function main(): Promise<void> {
     const [, , rawProgram, rawCluster] = process.argv;
     if (!rawProgram || !rawCluster) {
-        console.error('usage: bun run __tests__/fixtures/record.ts <program-id> <cluster>');
+        console.error('usage: pnpm run record:fixtures <program-id> <cluster>');
         process.exit(1);
     }
     const programId = address(rawProgram);

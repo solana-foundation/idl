@@ -1,6 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-
 import { address, isAddress } from '@solana/kit';
+import { describe, expect, test } from 'vitest';
 
 import { buildPmpIdlLookups, fetchPmpIdl, IDL_FALLBACK_PMP_AUTHORITIES } from '../src/pmp-idl.js';
 import {

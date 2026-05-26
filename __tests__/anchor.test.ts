@@ -1,6 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-
 import { address, isAddress } from '@solana/kit';
+import { describe, expect, test } from 'vitest';
 
 import { findAnchorIdlAddress } from '../src/anchor.js';
 

@@ -1,6 +1,5 @@
-import { describe, expect, mock, test } from 'bun:test';
-
 import { isAddress } from '@solana/kit';
+import { describe, expect, test, vi } from 'vitest';
 
 import {
     flattenInstructions,
@@ -130,14 +129,13 @@ describe('flattenInstructions', () => {
 
 describe('withRetry', () => {
     test('returns immediately on success', async () => {
-        const fn = mock(() => Promise.resolve(42));
+        const fn = vi.fn(() => Promise.resolve(42));
         expect(await withRetry(fn)).toBe(42);
         expect(fn).toHaveBeenCalledTimes(1);
     });
 
     test('rethrows non-429 errors without retrying', async () => {
-        const fn = mock(() => Promise.reject(new Error('boom')));
-        // oxlint-disable-next-line typescript/await-thenable -- bun's expect(...).rejects returns a Thenable.
+        const fn = vi.fn(() => Promise.reject(new Error('boom')));
         await expect(withRetry(fn)).rejects.toThrow('boom');
         expect(fn).toHaveBeenCalledTimes(1);
     });

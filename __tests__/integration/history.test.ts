@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'bun:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { Address } from '@solana/kit';
+import { describe, expect, it } from 'vitest';
 
 import { reconstructAnchorHistory } from '../../src/anchor.js';
 import { IDL_FALLBACK_PMP_AUTHORITIES } from '../../src/pmp-idl.js';

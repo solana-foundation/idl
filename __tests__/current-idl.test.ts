@@ -1,7 +1,7 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { deflateSync } from 'node:zlib';
 
 import { address } from '@solana/kit';
+import { describe, expect, test, vi } from 'vitest';
 
 import { fetchAnchorIdl, fetchIdl } from '../src/current-idl.js';
 import type { SolanaRpcClient } from '../src/rpc.js';
@@ -16,8 +16,8 @@ function buildAnchorAccount(json: string): string {
     return buf.toString('base64');
 }
 
-function mockRpc(response: unknown): { rpc: SolanaRpcClient; getAccountInfo: ReturnType<typeof mock> } {
-    const getAccountInfo = mock(() => ({ send: () => Promise.resolve(response) }));
+function mockRpc(response: unknown): { rpc: SolanaRpcClient; getAccountInfo: ReturnType<typeof vi.fn> } {
+    const getAccountInfo = vi.fn(() => ({ send: () => Promise.resolve(response) }));
     return { getAccountInfo, rpc: { getAccountInfo } as unknown as SolanaRpcClient };
 }
 

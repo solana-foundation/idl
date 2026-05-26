@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'bun:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { Address } from '@solana/kit';
+import { describe, expect, it } from 'vitest';
 
 import { findAnchorIdlAddress } from '../../src/anchor.js';
 import { fetchAllHistories } from '../../src/history.js';
