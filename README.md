@@ -142,8 +142,8 @@ A Next.js UI and HTTP API live under `web/`. The UI exposes the same three capab
 ```bash
 cd web
 cp .env.example .env.local   # set RPC_MAINNET / RPC_DEVNET
-npm install
-npm run dev                   # http://localhost:3000
+pnpm install
+pnpm run dev                  # http://localhost:3000
 ```
 
 Deploy to Vercel by setting the project **root directory** to `web` and adding `RPC_MAINNET` and/or `RPC_DEVNET` in the environment. A legacy `RPC_URL` is still honored as a fallback for `mainnet-beta` only.

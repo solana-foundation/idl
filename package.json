@@ -58,7 +58,7 @@
         "test:integration": "vitest run __tests__/integration",
         "record:fixtures": "tsx __tests__/fixtures/record.ts",
         "typecheck": "tsc --noEmit",
-        "prepack": "npm run clean && npm run build"
+        "prepack": "pnpm run clean && pnpm run build"
     },
     "dependencies": {
         "@solana-program/program-metadata": "^0.5.1",
