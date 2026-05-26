@@ -1,8 +1,8 @@
 import {
-    Compression,
-    Encoding,
     findMetadataPda,
     PROGRAM_METADATA_PROGRAM_ADDRESS,
+    type Compression,
+    type Encoding,
     type Seed,
     unpackDirectData as pmpUnpackDirectData,
 } from '@solana-program/program-metadata';
@@ -25,8 +25,8 @@ import {
 
 // ─── Re-exports from PMP package ─────────────────────────────────────────────
 
-export { Compression, Encoding, PROGRAM_METADATA_PROGRAM_ADDRESS };
-export type { Seed };
+export { PROGRAM_METADATA_PROGRAM_ADDRESS };
+export type { Compression, Encoding, Seed };
 
 export const FORMAT_NAME = ['none', 'json', 'yaml', 'toml'];
 export const ENCODING_NAME = ['none', 'utf8', 'base58', 'base64'];

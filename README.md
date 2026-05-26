@@ -196,9 +196,15 @@ Returns `null` if none resolves.
 ```bash
 bun install
 bun test           # unit + offline integration (recorded fixtures)
-bun run build      # emit dist/ via tsc
+bun run build      # dual ESM + CJS bundles via tsup, .d.ts via tsc
 bun run typecheck
 ```
+
+The build emits both `dist/index.js` (ESM) and `dist/index.cjs` (CJS) plus type
+declarations, matching the rest of the Solana ecosystem (`@solana/kit`,
+`@solana-program/*`). Consumers using `require()` (Node CJS, `tsx` in a CJS
+project, `ts-jest`, etc.) and `import` (ESM, modern bundlers) both resolve
+through the package `exports` map.
 
 Integration tests run against **recorded fixtures** in `__tests__/fixtures/<program>-<cluster>/` — every RPC response the production code paths need is serialized to disk, so the suite is hermetic and offline. To refresh or add fixtures (requires `RPC_MAINNET` / `RPC_DEVNET` or `web/.env.local`):
 

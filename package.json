@@ -1,6 +1,6 @@
 {
     "name": "@solana/idl",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Fetch and reconstruct Solana program IDLs from on-chain Anchor and Program Metadata (PMP) accounts.",
     "keywords": [
         "anchor",
@@ -32,12 +32,14 @@
     ],
     "type": "module",
     "sideEffects": false,
-    "main": "./dist/index.js",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
         }
     },
     "publishConfig": {
@@ -45,7 +47,7 @@
         "provenance": true
     },
     "scripts": {
-        "build": "tsc --project tsconfig.build.json",
+        "build": "tsup && tsc --project tsconfig.build.json",
         "clean": "rm -rf dist *.tsbuildinfo",
         "dev": "bun run src/cli.ts",
         "format": "oxfmt",
@@ -71,6 +73,7 @@
         "oxfmt": "^0.50.0",
         "oxlint": "^1.65.0",
         "oxlint-tsgolint": "^0.22.1",
+        "tsup": "^8.5.1",
         "typescript": "^5.7.0"
     },
     "peerDependencies": {
