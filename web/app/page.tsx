@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 
 type SearchMode = 'current' | 'latest' | 'history';
 
@@ -159,7 +160,7 @@ function ModeTabs({
   const tabs: { id: SearchMode; label: string; hint: string }[] = [
     { id: 'current', label: 'Current IDL', hint: 'GET /api/idl' },
     { id: 'latest', label: 'Latest both', hint: 'GET /api/latest' },
-    { id: 'history', label: 'Full history', hint: 'POST /api/history' },
+    { id: 'history', label: 'Full history', hint: 'GET /api/history' },
   ];
   return (
     <div className="flex flex-wrap gap-2 mb-4">
@@ -357,11 +358,10 @@ export default function Home() {
           setLatestData(json as LatestResponse);
         }
       } else {
-        const res = await fetch('/api/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ programId: id, cluster }),
-        });
+        const url = new URL('/api/history', window.location.origin);
+        url.searchParams.set('programId', id);
+        url.searchParams.set('cluster', cluster);
+        const res = await fetch(url);
         const json = await res.json();
         if (!res.ok) {
           setError(json.error ?? `HTTP ${res.status}`);
@@ -391,7 +391,25 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-3">
           <h1 className="text-lg font-semibold tracking-tight">IDL Explorer</h1>
           <span className="text-xs text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5">Solana</span>
-          <div className="ml-auto">
+          <a
+            href="https://github.com/solana-foundation/idl"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View source on GitHub"
+            title="View source on GitHub"
+            className="text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.1c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.35.96.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.93 10.93 0 0 1 5.74 0c2.18-1.49 3.14-1.18 3.14-1.18.63 1.59.24 2.76.12 3.05.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.05.78 2.12v3.14c0 .3.21.66.79.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z" />
+            </svg>
+          </a>
+          <div className="ml-auto flex items-center gap-4">
+            <Link
+              href="/docs"
+              className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Docs
+            </Link>
             <ClusterTabs
               cluster={cluster}
               onChange={(c) => {
@@ -422,6 +440,37 @@ export default function Home() {
               clearResults();
             }}
           />
+
+          {mode === 'history' && (
+            <div className="mb-4 px-3 py-2 bg-amber-950/30 border border-amber-900/40 rounded-lg text-amber-300/90 text-xs flex items-start gap-2">
+              <svg
+                viewBox="0 0 20 20"
+                className="w-4 h-4 mt-0.5 shrink-0"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.485 2.495c.66-1.146 2.367-1.146 3.029 0l6.28 10.875c.66 1.144-.165 2.58-1.515 2.58H3.72c-1.35 0-2.175-1.436-1.514-2.58L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>
+                Full history walks every IDL-touching transaction. For programs with many
+                upgrades this can take a minute or more — and may time out on the hosted
+                deployment. For repeated use, the{' '}
+                <a
+                  href="https://github.com/solana-foundation/idl#cli"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-amber-200"
+                >
+                  CLI
+                </a>{' '}
+                with a private RPC is the reliable path.
+              </span>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <input
@@ -466,7 +515,11 @@ export default function Home() {
               <path d="M12 2a10 10 0 019.95 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
             </svg>
             <p className="text-zinc-500 text-sm">{loadingLabel}</p>
-            {mode === 'history' && <p className="text-zinc-600 text-xs mt-1">This may take a moment</p>}
+            {mode === 'history' && (
+              <p className="text-zinc-600 text-xs mt-1">
+                Replaying every IDL transaction — large programs can take a minute or more.
+              </p>
+            )}
           </div>
         )}
 
@@ -519,9 +572,48 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="border-t border-zinc-800 py-4 text-center text-zinc-600 text-xs">
-        idl &middot; Current (<code className="text-zinc-500">/api/idl</code>), latest (
-        <code className="text-zinc-500">/api/latest</code>), history (<code className="text-zinc-500">/api/history</code>)
+      <footer className="border-t border-zinc-800 py-5 text-center text-zinc-600 text-xs space-y-1.5">
+        <div>
+          Current (<code className="text-zinc-500">/api/idl</code>), latest (
+          <code className="text-zinc-500">/api/latest</code>), history (
+          <code className="text-zinc-500">/api/history</code>)
+          <span className="mx-2 text-zinc-700">·</span>
+          <Link
+            href="/docs"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Docs
+          </Link>
+        </div>
+        <div className="text-zinc-500">
+          <a
+            href="https://github.com/solana-foundation/idl-spec"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            IDL spec
+          </a>
+          <span className="mx-2 text-zinc-700">·</span>
+          <a
+            href="https://github.com/solana-foundation/idl"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            solana-foundation/idl
+          </a>
+          <span className="mx-2 text-zinc-700">·</span>
+          <a
+            href="https://github.com/codama-idl/codama"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Codama
+          </a>
+          <span className="text-zinc-600"> (client generation)</span>
+        </div>
       </footer>
     </div>
   );

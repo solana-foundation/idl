@@ -3,12 +3,12 @@
 Reconstruct the full version history of Solana program IDLs from on-chain transactions. Supports both **Anchor IDL** and **Program Metadata (PMP)** formats.
 
 The app and api is also live for mainnet here: 
-https://idl-explorer.vercel.app/ 
+https://idl-one.vercel.app/ 
 
 ## Setup
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## CLI Usage
@@ -89,8 +89,8 @@ A Next.js web interface is included in the `web/` directory. The header has a cl
 ```bash
 cd web
 cp .env.example .env.local   # set RPC_MAINNET / RPC_DEVNET
-npm install
-npm run dev                   # http://localhost:3000
+pnpm install
+pnpm run dev                  # http://localhost:3000
 ```
 
 Deploy to Vercel by setting the root directory to `web` and adding `RPC_MAINNET` and/or `RPC_DEVNET` in the environment. A legacy `RPC_URL` is still accepted as a fallback for `mainnet-beta` only.

@@ -9,7 +9,7 @@ Fetch and reconstruct Solana program IDLs from on-chain accounts. Supports both 
 | ---------------------------------------- | ------------------------------------------------------------------- |
 | **npm package** `@solana/idl`            | Import in Node services and tools                                   |
 | **CLI** `idl`                            | Same logic from the terminal — bare IDL, `--latest`, or `--history` |
-| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl-explorer.vercel.app |
+| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl-one.vercel.app |
 
 ## Install
 
@@ -150,7 +150,9 @@ Deploy to Vercel by setting the project **root directory** to `web` and adding `
 
 ### API endpoints
 
-All routes accept a **`cluster`** parameter (`mainnet-beta` (default) or `devnet`). For `GET` routes pass it as a query parameter; for `POST /api/history` include it in the JSON body. A request to a cluster whose env var is unset returns `500` naming the missing variable.
+All routes accept a **`cluster`** parameter (`mainnet-beta` (default) or `devnet`). `GET` routes take it as a query parameter; `POST /api/history` accepts it in the JSON body. A request to a cluster whose env var is unset returns `500` naming the missing variable.
+
+`/api/idl` and `/api/latest` are quick reads. `/api/history` is the heavy one — it reconstructs every revision from on-chain transactions and is configured with a `300s` function timeout (capped by your Vercel plan: 60s on Hobby, 300s on Pro). For very long deploy histories, the CLI against a private RPC is the more reliable path.
 
 **`GET /api/idl?programId=<address>&cluster=<cluster>`** — Returns the **current** IDL (canonical PMP, then non-canonical PMP via the fallback authority, then Anchor):
 
@@ -166,9 +168,9 @@ All routes accept a **`cluster`** parameter (`mainnet-beta` (default) or `devnet
 
 **`GET /api/latest?programId=<address>&cluster=<cluster>`** — Returns **both** current sources side by side (when present): derived `pmpAddress`, `anchorAddress`, and two arrays `pmp` and `anchor`, each with at most one entry including decoded version metadata and the full `content` string for the live IDL.
 
-> `content` is kept as the **raw on-chain string** (not parsed) on this endpoint and on `POST /api/history` — same reasoning as the CLI's `--latest` / `--history` modes (byte-stable hashing and diffing for indexers). `GET /api/idl` is the parsed/usable view.
+> `content` is kept as the **raw on-chain string** (not parsed) on this endpoint and on `/api/history` — same reasoning as the CLI's `--latest` / `--history` modes (byte-stable hashing and diffing for indexers). `GET /api/idl` is the parsed/usable view.
 
-**`POST /api/history`** — Reconstructs **distinct** IDL versions over time. Body: `{ "programId": "<address>", "cluster": "<cluster>" }` (cluster defaults to `mainnet-beta`).
+**`GET /api/history?programId=<address>&cluster=<cluster>`** _and_ **`POST /api/history`** — Reconstructs **distinct** IDL versions over time. Both methods accept the same inputs and return the same shape; pick whichever fits your client. `POST` takes a JSON body `{ "programId": "<address>", "cluster": "<cluster>" }`. Responses are sent with `Cache-Control: no-store`.
 
 Each of `pmp` and `anchor` is an array of objects with `type`, `version`, `slot`, `time`, `activeFrom`, `activeTo` (`"current"` or `{ "slot", "time" }`), and the **`content`** string for that revision. Either array may be empty if that format has no on-chain history.
 

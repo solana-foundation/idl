@@ -57,7 +57,7 @@ export function makeFakeRpc(bucket: string): FakeRpc {
     if (!existsSync(bucket)) {
         throw new Error(
             `[fake-rpc] fixture bucket does not exist: ${bucket}\n` +
-                `Run \`npm run record:fixtures\` to generate fixtures first.`,
+                `Run \`pnpm run record:fixtures\` to generate fixtures first.`,
         );
     }
 
