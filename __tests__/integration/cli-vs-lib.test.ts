@@ -171,7 +171,19 @@ describe('CLI ↔ library equivalence on BUYux', () => {
         it('rejects --latest + --history', async () => {
             const { stderr, exitCode } = await runCliCaptured([BUYUX, '--latest', '--history', '--rpc', 'mock://x']);
             expect(exitCode).toBe(1);
-            expect(stderr).toContain('cannot be combined');
+            expect(stderr).toContain('mutually exclusive');
+        });
+
+        it('rejects --latest + --buffer', async () => {
+            const { stderr, exitCode } = await runCliCaptured([BUYUX, '--latest', '--buffer', '--rpc', 'mock://x']);
+            expect(exitCode).toBe(1);
+            expect(stderr).toContain('mutually exclusive');
+        });
+
+        it('rejects --history + --buffer', async () => {
+            const { stderr, exitCode } = await runCliCaptured([BUYUX, '--history', '--buffer', '--rpc', 'mock://x']);
+            expect(exitCode).toBe(1);
+            expect(stderr).toContain('mutually exclusive');
         });
 
         it('rejects --type without --history', async () => {

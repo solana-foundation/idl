@@ -1,4 +1,11 @@
-import { fetchMetadataContent, type Seed } from '@solana-program/program-metadata';
+import {
+    Compression,
+    Encoding,
+    fetchMaybeBuffer,
+    fetchMetadataContent,
+    unpackDirectData,
+    type Seed,
+} from '@solana-program/program-metadata';
 import type { Address } from '@solana/kit';
 
 import { findPmpMetadataAddress } from './program-metadata.js';
@@ -97,6 +104,56 @@ export async function fetchPmpIdl(
                 authority: lookup.authority,
                 content,
             };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Order matters: zlib+utf8 first because it's the {@link packDirectData}
+ * default and what every standard IDL upload tool produces. Gzip and plain
+ * UTF-8 come last as best-effort fallbacks for non-standard payloads.
+ */
+const DEFAULT_PMP_DECODE_CANDIDATES: readonly { encoding: Encoding; compression: Compression }[] = [
+    { compression: Compression.Zlib, encoding: Encoding.Utf8 },
+    { compression: Compression.Gzip, encoding: Encoding.Utf8 },
+    { compression: Compression.None, encoding: Encoding.Utf8 },
+];
+
+/**
+ * Decode a PMP buffer account directly from its address. PMP buffers carry
+ * only raw bytes — the encoding/compression/format live on the *destination*
+ * Metadata account, not on the buffer itself. For IDL workflows the payload
+ * is conventionally zlib+UTF-8 (matching {@link packDirectData} defaults), so
+ * this helper tries that first and falls back to gzip and plain UTF-8.
+ *
+ * Pass `options` to force a specific decoding when working with non-IDL
+ * buffers. Returns `null` if the account doesn't exist, isn't a PMP buffer,
+ * or none of the candidate decodings yield a printable string.
+ */
+export async function fetchPmpIdlFromBuffer(
+    rpc: SolanaRpcClient,
+    bufferAddress: Address,
+    options?: { encoding?: Encoding; compression?: Compression },
+): Promise<string | null> {
+    const account = await fetchMaybeBuffer(rpc, bufferAddress);
+    if (!account.exists) return null;
+
+    const data = account.data.data;
+    if (data.length === 0) return null;
+
+    const candidates =
+        options?.encoding !== undefined && options?.compression !== undefined
+            ? [{ compression: options.compression, encoding: options.encoding }]
+            : DEFAULT_PMP_DECODE_CANDIDATES;
+
+    for (const { encoding, compression } of candidates) {
+        try {
+            const content = unpackDirectData({ compression, data, encoding });
+            if (content.length > 0) return content;
+        } catch {
+            // Try the next candidate
         }
     }
 

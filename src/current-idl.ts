@@ -1,17 +1,21 @@
 import { promisify } from 'node:util';
 import { inflate } from 'node:zlib';
 
-import type { Seed } from '@solana-program/program-metadata';
+import { PROGRAM_METADATA_PROGRAM_ADDRESS, type Seed } from '@solana-program/program-metadata';
 import type { Address } from '@solana/kit';
 import { fetchEncodedAccount } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
-import { fetchPmpIdl } from './pmp-idl.js';
+import { fetchPmpIdl, fetchPmpIdlFromBuffer } from './pmp-idl.js';
 import { readU32LE, type SolanaRpcClient } from './rpc.js';
 
 const zlibInflate = promisify(inflate);
 
-// Anchor IDL account layout: [8 disc][32 authority][4 data_len][zlib(idl_json)].
+/**
+ * Anchor `IdlAccount` layout, shared by both the canonical IDL PDA and any
+ * staging buffer created via `idl_create_buffer`:
+ *   [8 disc][32 authority][4 data_len LE][zlib(idl_json)]
+ */
 const ANCHOR_ACCOUNT_HEADER_LEN = 44;
 const ANCHOR_ACCOUNT_LEN_OFFSET = 40;
 
@@ -21,6 +25,37 @@ export type AnchorIdl = {
     content: string;
     address: Address;
 };
+
+/**
+ * Result of {@link fetchIdlFromBuffer}: the decoded IDL content plus which
+ * buffer family produced it.
+ */
+export type BufferIdl = {
+    type: IdlSource;
+    address: Address;
+    content: string;
+};
+
+/**
+ * Shared Anchor IdlAccount decoder used by both {@link fetchAnchorIdl} (which
+ * derives the PDA from a program id) and {@link fetchAnchorIdlFromBuffer}
+ * (which takes a raw account address). Returns the decompressed IDL JSON, or
+ * null if the bytes don't match the IdlAccount layout.
+ */
+async function decodeAnchorIdlAccountBytes(raw: Uint8Array): Promise<string | null> {
+    if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return null;
+
+    const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
+    if (dataLen === 0 || ANCHOR_ACCOUNT_HEADER_LEN + dataLen > raw.length) return null;
+
+    const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
+    try {
+        const decompressed = await zlibInflate(compressed);
+        return decompressed.toString('utf8');
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Result of {@link fetchIdl}: a parsed IDL with the source (`pmp`/`anchor`)
@@ -51,18 +86,49 @@ export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): 
     const account = await fetchEncodedAccount(rpc, idlAddr);
     if (!account.exists) return null;
 
-    const raw = account.data;
-    if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return null;
+    const content = await decodeAnchorIdlAccountBytes(account.data);
+    if (content === null) return null;
 
-    const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
-    if (dataLen === 0 || ANCHOR_ACCOUNT_HEADER_LEN + dataLen > raw.length) return null;
+    return { address: idlAddr, content };
+}
 
-    const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
-    const decompressed = await zlibInflate(compressed);
-    return {
-        address: idlAddr,
-        content: decompressed.toString('utf8'),
-    };
+/**
+ * Decode an Anchor IDL buffer directly from its account address. Anchor IDL
+ * buffers (created by `idl_create_buffer` / `anchor idl write-buffer`) share
+ * the same `IdlAccount` layout as the canonical IDL PDA, so this also works
+ * if you pass the IDL PDA itself.
+ *
+ * Returns the decompressed IDL JSON, or `null` if the account doesn't exist
+ * or its bytes don't match the IdlAccount layout. Use this when an IDL has
+ * been staged via `anchor idl write-buffer` but not yet committed via
+ * `set-buffer` — common in multisig flows.
+ */
+export async function fetchAnchorIdlFromBuffer(rpc: SolanaRpcClient, bufferAddress: Address): Promise<string | null> {
+    const account = await fetchEncodedAccount(rpc, bufferAddress);
+    if (!account.exists) return null;
+    return await decodeAnchorIdlAccountBytes(account.data);
+}
+
+/**
+ * Resolve the IDL bytes in an arbitrary buffer (or buffer-like) account,
+ * auto-detecting whether it's a PMP buffer (owned by the program metadata
+ * program) or an Anchor IDL buffer (owned by any other program).
+ *
+ * Returns the IDL content plus which family produced it, or `null` if the
+ * account doesn't exist or isn't a recognised IDL buffer. Single
+ * `getAccountInfo` call — no transaction history walk needed.
+ */
+export async function fetchIdlFromBuffer(rpc: SolanaRpcClient, bufferAddress: Address): Promise<BufferIdl | null> {
+    const account = await fetchEncodedAccount(rpc, bufferAddress);
+    if (!account.exists) return null;
+
+    if (account.programAddress === PROGRAM_METADATA_PROGRAM_ADDRESS) {
+        const content = await fetchPmpIdlFromBuffer(rpc, bufferAddress);
+        return content === null ? null : { address: bufferAddress, content, type: 'pmp' };
+    }
+
+    const content = await decodeAnchorIdlAccountBytes(account.data);
+    return content === null ? null : { address: bufferAddress, content, type: 'anchor' };
 }
 
 /**

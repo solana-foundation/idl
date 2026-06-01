@@ -19,7 +19,7 @@ const PKG_VERSION: string = (() => {
 })();
 
 import { findAnchorIdlAddress, reconstructAnchorHistory } from './anchor.js';
-import { fetchIdl } from './current-idl.js';
+import { fetchIdl, fetchIdlFromBuffer } from './current-idl.js';
 import { fetchLatestIdls } from './latest-idl.js';
 import { buildPmpIdlLookups } from './pmp-idl.js';
 import {
@@ -392,10 +392,11 @@ export function buildProgram(options: RunCliOptions = {}): Command {
         .description(
             'Fetch on-chain IDLs for Solana programs. ' +
                 'Default: the live IDL (canonical PMP → fndn fallback PMP → Anchor). ' +
-                'Use --latest for the side-by-side payload with slot/time, or --history to replay the full version history.',
+                'Use --latest for the side-by-side payload with slot/time, --history to replay the full ' +
+                'version history, or --buffer to decode a staging buffer account directly.',
         )
         .version(PKG_VERSION)
-        .argument('<program-address>', 'Program address to look up an IDL for')
+        .argument('<address>', 'Program address (default/--latest/--history) or buffer account address (--buffer)')
         .option('-r, --rpc <url>', 'Solana RPC URL (or set RPC_URL env var)')
         .option('-s, --seed <seed>', 'Metadata seed (PMP only)', 'idl')
         .option('-a, --authority <address>', 'Authority address (for non-canonical PMP metadata)')
@@ -404,6 +405,10 @@ export function buildProgram(options: RunCliOptions = {}): Command {
             'Print {programId, pmpAddress, anchorAddress, pmp[], anchor[]} with version/slot/time (same shape as GET /api/latest)',
         )
         .option('--history', 'Replay the full IDL version history from on-chain transactions')
+        .option(
+            '--buffer',
+            'Decode the IDL bytes from an Anchor or PMP buffer account (auto-detected from the account owner)',
+        )
         .option('-t, --type <type>', '[--history only] IDL type: "pmp", "anchor", or "both" (auto-detected if omitted)')
         .option('-o, --output <dir>', '[--history only] Directory to save full snapshots')
         .option('--dump-idls <dir>', '[--history only] Directory to write each distinct IDL version')
@@ -421,13 +426,14 @@ export function buildProgram(options: RunCliOptions = {}): Command {
             const seed: string = opts.seed ?? 'idl';
             const authority: Address | undefined = opts.authority ? (opts.authority as Address) : undefined;
 
-            if (opts.latest && opts.history) {
-                console.error(pc.red('Error: --latest and --history cannot be combined.'));
+            const modes = [opts.latest, opts.history, opts.buffer].filter(Boolean).length;
+            if (modes > 1) {
+                console.error(pc.red('Error: --latest, --history, and --buffer are mutually exclusive.'));
                 process.exit(1);
             }
 
             // History-only flags guard. `--type`/`--output`/`--dump-idls` describe how
-            // to replay history, so they make no sense in the live (default/--latest) modes.
+            // to replay history, so they make no sense in the live (default/--latest/--buffer) modes.
             if (!opts.history) {
                 if (opts.output || opts.dumpIdls) {
                     console.error(pc.red('Error: --output and --dump-idls are only valid with --history.'));
@@ -441,6 +447,26 @@ export function buildProgram(options: RunCliOptions = {}): Command {
                     );
                     process.exit(1);
                 }
+            }
+
+            // ─── --buffer (decode raw buffer account) ──────────────────────────────
+            if (opts.buffer) {
+                const result = await fetchIdlFromBuffer(rpc, addr);
+                if (!result) {
+                    console.error(
+                        pc.red(
+                            'No IDL found at this address (not a PMP buffer, not an Anchor IdlAccount, or account does not exist).',
+                        ),
+                    );
+                    process.exit(1);
+                }
+
+                try {
+                    console.log(JSON.stringify(JSON.parse(result.content), null, 2));
+                } catch {
+                    console.log(result.content);
+                }
+                return;
             }
 
             // ─── --latest (side-by-side with slot/time) ────────────────────────────
