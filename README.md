@@ -237,6 +237,12 @@ pnpm run record:fixtures TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA  devnet
 
 The recorder reuses any fixture already on disk, so reruns only fetch what's missing.
 
+Buffer-account fixtures (for `fetchIdlFromBuffer`) are seeded by a one-shot script that publishes the IDL into a real PMP buffer on devnet via the upstream `program-metadata create-buffer` CLI and snapshots the on-chain bytes. Requires a Solana CLI config pointed at devnet with a funded keypair:
+
+```bash
+pnpm run seed:pmp-buffer idl.json
+```
+
 ```bash
 pnpm run test:integration    # only the integration suite (fixture-backed, offline)
 ```

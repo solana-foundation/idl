@@ -6,7 +6,7 @@ import type { Address } from '@solana/kit';
 import { fetchEncodedAccount } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
-import { fetchPmpIdl, fetchPmpIdlFromBuffer } from './pmp-idl.js';
+import { decodePmpIdlFromBufferAccount, fetchPmpIdl } from './pmp-idl.js';
 import { readU32LE, type SolanaRpcClient } from './rpc.js';
 
 const zlibInflate = promisify(inflate);
@@ -115,15 +115,17 @@ export async function fetchAnchorIdlFromBuffer(rpc: SolanaRpcClient, bufferAddre
  * program) or an Anchor IDL buffer (owned by any other program).
  *
  * Returns the IDL content plus which family produced it, or `null` if the
- * account doesn't exist or isn't a recognised IDL buffer. Single
- * `getAccountInfo` call — no transaction history walk needed.
+ * account doesn't exist or isn't a recognised IDL buffer. Exactly one
+ * `getAccountInfo` call is issued regardless of which branch is taken —
+ * the already-fetched account bytes are passed straight to the
+ * source-specific decoder, so no transaction history walk is needed.
  */
 export async function fetchIdlFromBuffer(rpc: SolanaRpcClient, bufferAddress: Address): Promise<BufferIdl | null> {
     const account = await fetchEncodedAccount(rpc, bufferAddress);
     if (!account.exists) return null;
 
     if (account.programAddress === PROGRAM_METADATA_PROGRAM_ADDRESS) {
-        const content = await fetchPmpIdlFromBuffer(rpc, bufferAddress);
+        const content = decodePmpIdlFromBufferAccount(account);
         return content === null ? null : { address: bufferAddress, content, type: 'pmp' };
     }
 
