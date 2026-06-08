@@ -1,6 +1,6 @@
 {
     "name": "@solana/idl",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Fetch and reconstruct Solana program IDLs from on-chain Anchor and Program Metadata (PMP) accounts.",
     "keywords": [
         "anchor",
@@ -57,6 +57,7 @@
         "test": "vitest run",
         "test:integration": "vitest run __tests__/integration",
         "record:fixtures": "tsx __tests__/fixtures/record.ts",
+        "seed:pmp-buffer": "tsx scripts/seed-pmp-buffer.ts",
         "typecheck": "tsc --noEmit",
         "prepack": "pnpm run clean && pnpm run build"
     },

@@ -5,11 +5,11 @@
 
 Fetch and reconstruct Solana program IDLs from on-chain accounts. Supports both **Anchor IDL** accounts and the **Solana Program Metadata Program (PMP)** end-to-end, including full historical reconstruction by replaying on-chain transactions.
 
-| Surface                                  | Use case                                                            |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| **npm package** `@solana/idl`            | Import in Node services and tools                                   |
-| **CLI** `idl`                            | Same logic from the terminal — bare IDL, `--latest`, or `--history` |
-| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl-one.vercel.app      |
+| Surface                                  | Use case                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| **npm package** `@solana/idl`            | Import in Node services and tools                                               |
+| **CLI** `idl`                            | Same logic from the terminal — bare IDL, `--latest`, `--history`, or `--buffer` |
+| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl-one.vercel.app                  |
 
 ## Install
 
@@ -44,9 +44,15 @@ console.log(latest.pmp[0]?.slot, latest.anchor[0]?.slot);
 const history = await fetchAllHistories(rpc, programId);
 console.log(history.pmp.length, 'PMP snapshots');
 console.log(history.anchor.length, 'Anchor snapshots');
+
+// Decode an IDL staged in a buffer account that hasn't been committed yet
+// (e.g. uploaded via `anchor idl write-buffer` waiting on a multisig).
+// Auto-detects Anchor vs PMP from the account owner.
+const buffer = await fetchIdlFromBuffer(rpc, address('Buf...'));
+if (buffer) console.log(buffer.type, buffer.content);
 ```
 
-For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or `reconstructAnchorHistory(rpc, programId)` directly.
+For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or `reconstructAnchorHistory(rpc, programId)` directly. For type-specific buffer decoding use `fetchAnchorIdlFromBuffer` or `fetchPmpIdlFromBuffer`.
 
 ### Exports
 
@@ -55,6 +61,9 @@ For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or 
 | `fetchIdl`                                       | Live IDL, PMP-first with fndn fallback then Anchor fallback                  |
 | `fetchAnchorIdl`                                 | Live Anchor IDL only: `{ content, address }`                                 |
 | `fetchPmpIdl`                                    | Live PMP IDL only: `{ content, address, authority }` (canonical then fndn)   |
+| `fetchIdlFromBuffer`                             | Decode a staging buffer account directly, auto-detecting Anchor vs PMP       |
+| `fetchAnchorIdlFromBuffer`                       | Decode an Anchor `IdlAccount` (canonical PDA or buffer) by address           |
+| `fetchPmpIdlFromBuffer`                          | Decode a PMP `Buffer` account by address (zlib+utf8 by default)              |
 | `fetchLatestIdls`                                | PMP + Anchor side-by-side with version/slot/time (powers `--latest`)         |
 | `fetchAllHistories`                              | Full PMP + Anchor history side-by-side (powers `--history` / `/api/history`) |
 | `reconstructPmpHistory`                          | Replay PMP transactions into a history of `VirtualState` snapshots           |
@@ -63,25 +72,28 @@ For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or 
 | `buildPmpIdlLookups`                             | Enumerate PMP PDAs to try (canonical + every fndn fallback)                  |
 | `IDL_FALLBACK_PMP_AUTHORITIES`                   | Array of non-canonical PMP authorities baked into `fetchIdl` / `fetchPmpIdl` |
 
-Types: `Idl`, `IdlSource`, `AnchorIdl`, `PmpIdl`, `PmpIdlLookup`, `LatestIdls`, `LatestIdlVersion`, `AllHistories`, `VirtualState`, `Snapshot`, `SolanaRpcClient`.
+Types: `Idl`, `IdlSource`, `AnchorIdl`, `BufferIdl`, `PmpIdl`, `PmpIdlLookup`, `LatestIdls`, `LatestIdlVersion`, `AllHistories`, `VirtualState`, `Snapshot`, `SolanaRpcClient`.
 
 ## CLI
 
-The `idl` binary mirrors the library and has three modes, each backed by the same core function the API uses:
+The `idl` binary mirrors the library and has four modes, each backed by the same core function the API uses:
 
 | Mode                     | Flag        | Output                                                                                           | Backing function                                     | API parity          |
 | ------------------------ | ----------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------- | ------------------- |
 | **Bare IDL** _(default)_ | _(none)_    | Just the IDL body on stdout — pretty JSON if parsable, otherwise the raw string                  | `fetchIdl`                                           | `GET /api/idl`      |
 | **Latest side-by-side**  | `--latest`  | `{programId, pmpAddress, anchorAddress, pmp[], anchor[]}` with version/slot/time for each source | `fetchLatestIdls`                                    | `GET /api/latest`   |
 | **Full history**         | `--history` | Pretty timeline of every revision (plus optional `--output` / `--dump-idls`)                     | `reconstructPmpHistory` / `reconstructAnchorHistory` | `POST /api/history` |
+| **Buffer**               | `--buffer`  | The IDL body from a buffer account, auto-detecting Anchor vs PMP                                 | `fetchIdlFromBuffer`                                 | _(library only)_    |
 
-Live IDL resolution (default and `--latest`) always follows the same order: **canonical PMP → fndn fallback PMP → Anchor**. History replay (`--history`) auto-detects unless you pin `--type`.
+Live IDL resolution (default and `--latest`) always follows the same order: **canonical PMP → fndn fallback PMP → Anchor**. History replay (`--history`) auto-detects unless you pin `--type`. `--buffer` takes the address of a staging account (e.g. the one printed by `anchor idl write-buffer` or `program-metadata create-buffer`) and decodes its bytes directly — one RPC call, no history walk.
 
 > **Parsed vs. raw IDL.** Bare mode emits the IDL **parsed** as pretty JSON — best when you want to _use_ the IDL (codegen, jq, inspection). `--latest` and `--history` emit the IDL **as a raw string** inside their wrapper — best when you want to _record_ or _compare_ it (hashing, diffing, byte-stable storage). `JSON.parse` ↔ `JSON.stringify` is not guaranteed to be a byte-for-byte round trip, so the indexer-flavored modes preserve the on-chain bytes verbatim.
 
 ```bash
-npx @solana/idl <program-address> [options]
+npx @solana/idl <address> [options]
 ```
+
+The positional argument is a program address in default / `--latest` / `--history` modes, and a buffer account address in `--buffer` mode.
 
 ### Options
 
@@ -92,11 +104,12 @@ npx @solana/idl <program-address> [options]
 | `-a, --authority <address>` | Authority address for non-canonical PMP metadata                                                          |
 | `--latest`                  | Print the `{programId, pmpAddress, anchorAddress, pmp[], anchor[]}` payload (same shape as `/api/latest`) |
 | `--history`                 | Replay the full IDL version history from on-chain transactions                                            |
+| `--buffer`                  | Decode the IDL bytes from a buffer account (auto-detects Anchor vs PMP from the account owner)            |
 | `-t, --type <type>`         | **`--history` only.** IDL type: `pmp`, `anchor`, or `both` (auto-detected if omitted)                     |
 | `-o, --output <dir>`        | **`--history` only.** Save full state snapshots to directory                                              |
 | `--dump-idls <dir>`         | **`--history` only.** Write each distinct IDL version as JSON + an `index.json` timeline                  |
 
-`--latest` and `--history` are mutually exclusive. The `--type` / `--output` / `--dump-idls` flags are rejected outside `--history`.
+`--latest`, `--history`, and `--buffer` are mutually exclusive. The `--type` / `--output` / `--dump-idls` flags are rejected outside `--history`.
 
 ### Examples
 
@@ -134,6 +147,13 @@ npx @solana/idl <program> --history --type both --dump-idls ./idls
 ```
 
 When using `--history --type both`, paths for both `--output` and `--dump-idls` are automatically split into `<dir>/pmp/` and `<dir>/anchor/`.
+
+Decode a staging buffer (e.g. inspect an IDL upload before the multisig executes `set-buffer`):
+
+```bash
+npx @solana/idl <buffer-address> --buffer \
+  --rpc https://api.mainnet-beta.solana.com > staged-idl.json
+```
 
 ## Web app
 
@@ -216,6 +236,12 @@ pnpm run record:fixtures TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA  devnet
 ```
 
 The recorder reuses any fixture already on disk, so reruns only fetch what's missing.
+
+Buffer-account fixtures (for `fetchIdlFromBuffer`) are seeded by a one-shot script that publishes the IDL into a real PMP buffer on devnet via the upstream `program-metadata create-buffer` CLI and snapshots the on-chain bytes. Requires a Solana CLI config pointed at devnet with a funded keypair:
+
+```bash
+pnpm run seed:pmp-buffer idl.json
+```
 
 ```bash
 pnpm run test:integration    # only the integration suite (fixture-backed, offline)

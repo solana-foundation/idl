@@ -1,5 +1,13 @@
-import { fetchMetadataContent, type Seed } from '@solana-program/program-metadata';
-import type { Address } from '@solana/kit';
+import {
+    Compression,
+    decodeBuffer,
+    Encoding,
+    fetchMetadataContent,
+    unpackDirectData,
+    type Seed,
+} from '@solana-program/program-metadata';
+import type { Address, EncodedAccount } from '@solana/kit';
+import { fetchEncodedAccount } from '@solana/kit';
 
 import { findPmpMetadataAddress } from './program-metadata.js';
 import type { SolanaRpcClient } from './rpc.js';
@@ -101,4 +109,93 @@ export async function fetchPmpIdl(
     }
 
     return null;
+}
+
+/**
+ * Specifies a single PMP `(encoding, compression)` pair to decode a buffer as.
+ * Both fields are required together because they're a tightly coupled
+ * decoding pipeline — supplying only one would silently revert to the
+ * default candidate list for the other, which surprised reviewers in the
+ * 0.1.1 design.
+ */
+export type PmpDecodeFormat = {
+    encoding: Encoding;
+    compression: Compression;
+};
+
+/**
+ * Order matters: zlib+utf8 first because it's the {@link packDirectData}
+ * default and what every standard IDL upload tool produces. Gzip and plain
+ * UTF-8 come last as best-effort fallbacks for non-standard payloads.
+ *
+ * Gzip is kept here on purpose even though `@solana-program/program-metadata`
+ * v0.5.x currently can't decode it — the upstream `uncompressData(Gzip)`
+ * branch does `throw pako.ungzip(data)` instead of `return`, so today the
+ * candidate is dead code. We keep it so the day they ship the one-line fix
+ * we transparently start accepting gzip buffers without a coordinated
+ * release on this side. The cost of the extra throw/catch per fetch is
+ * negligible.
+ */
+const DEFAULT_PMP_DECODE_CANDIDATES: readonly PmpDecodeFormat[] = [
+    { compression: Compression.Zlib, encoding: Encoding.Utf8 },
+    { compression: Compression.Gzip, encoding: Encoding.Utf8 },
+    { compression: Compression.None, encoding: Encoding.Utf8 },
+];
+
+/**
+ * Pure decoder for an already-fetched PMP `Buffer` account. Returns the
+ * decoded content string, or `null` if the bytes don't parse as a Buffer or
+ * none of the candidate decodings yield a non-empty string.
+ *
+ * Exposed within the package so callers that already hold the encoded
+ * account (e.g. {@link fetchIdlFromBuffer}) can avoid a second RPC round
+ * trip. The public {@link fetchPmpIdlFromBuffer} is the one-stop entry that
+ * does the fetch + decode.
+ */
+export function decodePmpIdlFromBufferAccount(account: EncodedAccount, format?: PmpDecodeFormat): string | null {
+    let decoded;
+    try {
+        decoded = decodeBuffer(account);
+    } catch {
+        return null;
+    }
+
+    const data = decoded.data.data;
+    if (data.length === 0) return null;
+
+    const candidates = format ? [format] : DEFAULT_PMP_DECODE_CANDIDATES;
+
+    for (const { encoding, compression } of candidates) {
+        try {
+            const content = unpackDirectData({ compression, data, encoding });
+            if (content.length > 0) return content;
+        } catch {
+            // Try the next candidate
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Fetch a PMP buffer account by address and decode its raw bytes as an IDL.
+ * PMP buffers carry only raw bytes — the encoding/compression/format live on
+ * the *destination* Metadata account, not on the buffer itself. For IDL
+ * workflows the payload is conventionally zlib+UTF-8 (matching
+ * {@link packDirectData} defaults), so this helper tries that first and
+ * falls back to gzip and plain UTF-8.
+ *
+ * Pass `format` (both `encoding` AND `compression` required together) to
+ * force a specific decoding when working with non-IDL buffers. Returns
+ * `null` if the account doesn't exist, isn't a PMP buffer, or none of the
+ * candidate decodings yield a non-empty string.
+ */
+export async function fetchPmpIdlFromBuffer(
+    rpc: SolanaRpcClient,
+    bufferAddress: Address,
+    format?: PmpDecodeFormat,
+): Promise<string | null> {
+    const account = await fetchEncodedAccount(rpc, bufferAddress);
+    if (!account.exists) return null;
+    return decodePmpIdlFromBufferAccount(account, format);
 }
