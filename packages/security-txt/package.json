@@ -1,0 +1,69 @@
+{
+    "name": "@solana/security-txt",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Fetch a Solana program's security.txt from either the on-chain Program Metadata (PMP) account or the legacy ELF-embedded `.security.txt` section.",
+    "keywords": [
+        "kit",
+        "on-chain",
+        "pmp",
+        "program-metadata",
+        "security-txt",
+        "security.txt",
+        "solana"
+    ],
+    "homepage": "https://github.com/solana-foundation/idl/tree/main/packages/security-txt#readme",
+    "bugs": {
+        "url": "https://github.com/solana-foundation/idl/issues"
+    },
+    "license": "MIT",
+    "author": "Solana Foundation",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/solana-foundation/idl.git",
+        "directory": "packages/security-txt"
+    },
+    "files": [
+        "dist",
+        "src",
+        "README.md",
+        "LICENSE"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "tsup && tsc --project tsconfig.build.json",
+        "clean": "rm -rf dist *.tsbuildinfo",
+        "lint": "oxlint && oxfmt --check",
+        "lint:fix": "oxlint --fix && oxfmt",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit",
+        "prepack": "pnpm run clean && pnpm run build"
+    },
+    "dependencies": {
+        "@solana-program/program-metadata": "^0.5.1"
+    },
+    "devDependencies": {
+        "@solana/kit": "^6.8.0"
+    },
+    "peerDependencies": {
+        "@solana/kit": "^6.0.0"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

@@ -4,9 +4,8 @@
         "noEmit": false,
         "emitDeclarationOnly": true,
         "outDir": "dist",
-        "rootDir": "src",
-        "types": ["node"]
+        "rootDir": "src"
     },
     "include": ["src"],
-    "exclude": ["node_modules", "dist", "__tests__", "web"]
+    "exclude": ["node_modules", "dist", "__tests__"]
 }

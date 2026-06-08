@@ -36,21 +36,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint and format check
+      - name: Lint and format check (root)
         run: pnpm run lint
 
-      - name: Typecheck
+      - name: Typecheck (all packages)
         run: pnpm run typecheck
 
-      - name: Test
+      - name: Test (all packages)
         run: pnpm run test
 
-      - name: Build
+      - name: Build (all packages)
         run: pnpm run build
 
-      - name: Verify dist artifacts exist
+      - name: Verify @solana/idl dist artifacts exist
         run: |
-          test -f dist/index.js
-          test -f dist/index.cjs
-          test -f dist/index.d.ts
-          test -f dist/cli.js
+          test -f packages/idl/dist/index.js
+          test -f packages/idl/dist/index.cjs
+          test -f packages/idl/dist/index.d.ts
+          test -f packages/idl/dist/cli.js
+
+      - name: Verify @solana/security-txt dist artifacts exist
+        run: |
+          test -f packages/security-txt/dist/index.js
+          test -f packages/security-txt/dist/index.cjs
+          test -f packages/security-txt/dist/index.d.ts

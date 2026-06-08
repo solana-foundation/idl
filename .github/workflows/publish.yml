@@ -76,9 +76,9 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('./packages/idl/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Publishing version: $VERSION"
+          echo "Publishing @solana/idl version: $VERSION"
 
       - name: Check if prerelease
         id: prerelease
@@ -92,16 +92,17 @@ jobs:
             echo "npm_tag=latest" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build
-        run: pnpm run build
+      - name: Build @solana/idl
+        run: pnpm --filter @solana/idl run build
 
       - name: Pack tarball
+        working-directory: packages/idl
         run: |
-          mkdir -p .npm-pack
-          npm pack --pack-destination .npm-pack
+          mkdir -p ../../.npm-pack
+          npm pack --pack-destination ../../.npm-pack
           echo ""
           echo "Packed tarball:"
-          ls -la .npm-pack/
+          ls -la ../../.npm-pack/
 
       - name: 'Guard - Fail if tarball missing dist/ artifacts'
         run: |
