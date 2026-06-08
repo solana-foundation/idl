@@ -461,11 +461,18 @@ export function buildProgram(options: RunCliOptions = {}): Command {
                     process.exit(1);
                 }
 
+                // `result.content` is the raw on-chain string. Pretty-print
+                // when it parses as JSON; otherwise pass it through verbatim
+                // so non-JSON IDL formats survive a pipe to a file unchanged.
+                // The try/catch is intentionally narrow: only `JSON.parse`
+                // can throw — we always want exactly one stdout write.
+                let body: string;
                 try {
-                    console.log(JSON.stringify(JSON.parse(result.content), null, 2));
+                    body = JSON.stringify(JSON.parse(result.content), null, 2);
                 } catch {
-                    console.log(result.content);
+                    body = result.content;
                 }
+                console.log(body);
                 return;
             }
 

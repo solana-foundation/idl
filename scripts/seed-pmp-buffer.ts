@@ -98,12 +98,74 @@ function rpcUrlFromSolanaConfig(): string {
     return match[1]!.trim();
 }
 
+/** This script creates a *real on-chain PMP buffer account* via the upstream
+ *  CLI before recording it to disk — rent + tx fees on whatever cluster the
+ *  Solana CLI is pointed at. Refuse anything that doesn't smell like devnet
+ *  so a mis-configured `solana config` doesn't (a) spend real SOL on mainnet
+ *  for a throwaway test fixture, and (b) write the resulting bytes into the
+ *  hard-coded `<addr>-devnet/` bucket where they'd be silently mislabeled.
+ *  `localhost` / `127.0.0.1` are allowed for local test validators. */
+function assertDevnetRpc(rpcUrl: string): void {
+    const lower = rpcUrl.toLowerCase();
+    const ok = lower.includes('devnet') || lower.includes('localhost') || lower.includes('127.0.0.1');
+    if (ok) return;
+    throw new Error(
+        `Refusing to seed a buffer fixture against a non-devnet RPC (json_rpc_url=${rpcUrl}).\n` +
+            `Run \`solana config set --url devnet\` and retry.`,
+    );
+}
+
+/** Fail fast if the upstream PMP CLI isn't reachable, so users get a clear
+ *  error before we read the IDL or attempt to spawn `create-buffer`. */
+function assertProgramMetadataCliAvailable(): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn('pnpm', ['exec', 'program-metadata', '--version'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        child.stderr.on('data', (chunk: Buffer) => {
+            stderr += chunk.toString('utf8');
+        });
+        child.on('error', err => {
+            reject(
+                new Error(
+                    `Could not run \`pnpm exec program-metadata\`: ${err.message}\n` +
+                        `Install it locally with \`pnpm add -D @solana-program/program-metadata\` or globally with \`npm i -g @solana-program/program-metadata\`.`,
+                ),
+            );
+        });
+        child.on('close', code => {
+            if (code === 0) resolve();
+            else
+                reject(
+                    new Error(
+                        `\`pnpm exec program-metadata --version\` exited with code ${code}.\n` +
+                            (stderr.trim() ? `stderr: ${stderr.trim()}\n` : '') +
+                            `Install it with \`pnpm add -D @solana-program/program-metadata\`.`,
+                    ),
+                );
+        });
+    });
+}
+
 async function main(): Promise<void> {
     const [, , rawIdlPath] = process.argv;
     if (!rawIdlPath) {
         console.error('usage: pnpm seed:pmp-buffer <idl-file>');
         process.exit(1);
     }
+
+    // Preflight: bail early with clear messages before we read the IDL file
+    // or spawn `program-metadata create-buffer`.
+    console.log('▶ preflight checks');
+    const rpcUrl = rpcUrlFromSolanaConfig();
+    console.log(`  solana cli rpc: ${rpcUrl}`);
+    assertDevnetRpc(rpcUrl);
+    console.log(`  cluster:        devnet ✓`);
+    await assertProgramMetadataCliAvailable();
+    console.log(`  program-metadata cli: available ✓`);
+    console.log('');
+
     const absIdlPath = path.resolve(rawIdlPath);
     const idlContent = readFileSync(absIdlPath, 'utf8');
 
@@ -120,7 +182,6 @@ async function main(): Promise<void> {
     console.log(`\n✓ buffer created at ${bufferAddress}`);
 
     console.log('\n▶ recording getAccountInfo fixture');
-    const rpcUrl = rpcUrlFromSolanaConfig();
     console.log(`  rpc: ${rpcUrl.replace(/\/[a-f0-9-]{20,}\/?$/i, '/<redacted>')}`);
 
     const bucket = path.resolve(HERE, `../__tests__/fixtures/${bufferAddress}-devnet`);
