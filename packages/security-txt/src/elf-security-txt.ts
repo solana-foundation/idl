@@ -18,9 +18,7 @@ type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
  * stub. The implementation will land in a follow-up commit; in the meantime
  * the package is `private: true` so it can't be published.
  */
-export async function fetchElfSecurityTxt(
-    _rpc: SolanaRpcClient,
-    _programId: Address,
-): Promise<ElfSecurityTxt | null> {
+// oxlint-disable-next-line typescript/require-await -- stub; real impl will await an RPC call
+export async function fetchElfSecurityTxt(_rpc: SolanaRpcClient, _programId: Address): Promise<ElfSecurityTxt | null> {
     throw new Error('fetchElfSecurityTxt: not yet implemented');
 }

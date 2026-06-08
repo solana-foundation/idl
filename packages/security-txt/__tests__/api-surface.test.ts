@@ -28,20 +28,20 @@ describe('@solana/security-txt public surface', () => {
     });
 
     test('fetchSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(
-            fetchSecurityTxt(null as never, '11111111111111111111111111111111' as never),
-        ).rejects.toThrow(/not yet implemented/);
+        await expect(fetchSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
+            /not yet implemented/,
+        );
     });
 
     test('fetchPmpSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(
-            fetchPmpSecurityTxt(null as never, '11111111111111111111111111111111' as never),
-        ).rejects.toThrow(/not yet implemented/);
+        await expect(fetchPmpSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
+            /not yet implemented/,
+        );
     });
 
     test('fetchElfSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(
-            fetchElfSecurityTxt(null as never, '11111111111111111111111111111111' as never),
-        ).rejects.toThrow(/not yet implemented/);
+        await expect(fetchElfSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
+            /not yet implemented/,
+        );
     });
 });

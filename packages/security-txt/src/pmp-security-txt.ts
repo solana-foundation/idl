@@ -15,10 +15,7 @@ type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
  * {@link SECURITY_TXT_PMP_SEED}, so it's a one-arg helper for the canonical
  * case and a two-arg helper for non-canonical uploads.
  */
-export async function findPmpSecurityTxtAddress(
-    programAddress: Address,
-    authority?: Address | null,
-): Promise<Address> {
+export async function findPmpSecurityTxtAddress(programAddress: Address, authority?: Address | null): Promise<Address> {
     const [pda] = await findMetadataPda({
         authority: authority ?? null,
         program: programAddress,
@@ -39,6 +36,7 @@ export async function findPmpSecurityTxtAddress(
  * stub. The implementation will land in a follow-up commit; in the meantime
  * the package is `private: true` so it can't be published.
  */
+// oxlint-disable-next-line typescript/require-await -- stub; real impl will await an RPC call
 export async function fetchPmpSecurityTxt(
     _rpc: SolanaRpcClient,
     _programId: Address,

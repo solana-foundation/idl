@@ -2,11 +2,11 @@
 
 Monorepo for fetching on-chain Solana metadata. Two libraries sharing one home, plus the hosted explorer.
 
-| Package | npm | Purpose |
-| --- | --- | --- |
-| [`packages/idl`](./packages/idl) | [`@solana/idl`](https://www.npmjs.com/package/@solana/idl) | Fetch and reconstruct program IDLs from on-chain Anchor and Program Metadata (PMP) accounts |
-| [`packages/security-txt`](./packages/security-txt) | `@solana/security-txt` _(scaffolded, not yet published)_ | Fetch a program's `security.txt` from PMP (new) or the legacy ELF-embedded section |
-| [`web`](./web) | _internal_ | Next.js UI + HTTP API hosted at https://idl-one.vercel.app |
+| Package                                            | npm                                                        | Purpose                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [`packages/idl`](./packages/idl)                   | [`@solana/idl`](https://www.npmjs.com/package/@solana/idl) | Fetch and reconstruct program IDLs from on-chain Anchor and Program Metadata (PMP) accounts |
+| [`packages/security-txt`](./packages/security-txt) | `@solana/security-txt` _(scaffolded, not yet published)_   | Fetch a program's `security.txt` from PMP (new) or the legacy ELF-embedded section          |
+| [`web`](./web)                                     | _internal_                                                 | Next.js UI + HTTP API hosted at https://idl-one.vercel.app                                  |
 
 Both libraries follow the same shape: a `fetch<Thing>` headline that tries PMP first and falls back to the legacy source, plus per-source escape hatches (`fetchPmp<Thing>`, `fetchAnchor<Thing>` / `fetchElf<Thing>`) for callers that need fine control. See each package's README for details.
 
