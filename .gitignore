@@ -6,6 +6,7 @@ idls-both/
 *.tsbuildinfo
 .env.local
 .next/
+.npm-pack/
 .claude/settings.local.json
 .codex/config.toml
 scratch.ts

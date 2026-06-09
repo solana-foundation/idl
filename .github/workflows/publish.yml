@@ -1,10 +1,19 @@
-name: Publish @solana/idl
+name: Publish packages
 
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: 'Package to publish (or "all")'
+        required: true
+        type: choice
+        options:
+          - all
+          - idl
+          - security-txt
+        default: all
       dry-run:
-        description: 'Dry run (unchecked will publish to npm, push git tag, and create GitHub release)'
+        description: 'Dry run (validate without publishing, tagging or releasing)'
         required: true
         default: true
         type: boolean
@@ -14,16 +23,23 @@ permissions:
   id-token: write
   pull-requests: write
 
+# Only one publish at a time across the whole repo.
 concurrency:
   group: npm-publish
   cancel-in-progress: false
 
+env:
+  # Workspace publish order. Add new packages here as they go live.
+  # Names match the `packages/<dir>` folders; npm scopes come from each
+  # package.json's `name` field.
+  PUBLISH_PACKAGES: idl security-txt
+
 jobs:
   guard-allowed-branch:
-    name: Guard allowed source branch for release publish
+    name: Guard allowed source branch
     runs-on: ubuntu-latest
     steps:
-      - name: Guard allowed source branch for release publish
+      - name: Fail if not on main or hotfix/*
         run: |
           case "${{ github.ref }}" in
             refs/heads/main|refs/heads/hotfix/*) ;;
@@ -73,155 +89,265 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Get version
-        id: version
+      # ─── Target resolution ──────────────────────────────────────────────
+      - name: Resolve target packages from input
+        id: targets
         run: |
-          VERSION=$(node -p "require('./packages/idl/package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Publishing @solana/idl version: $VERSION"
-
-      - name: Check if prerelease
-        id: prerelease
-        run: |
-          if [[ "${{ steps.version.outputs.version }}" == *"-"* ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            echo "npm_tag=beta" >> $GITHUB_OUTPUT
-            echo "Pre-release version detected, using 'beta' npm tag"
+          SELECTED="${{ github.event.inputs.package }}"
+          if [ "$SELECTED" = "all" ]; then
+            FLAT=$(echo $PUBLISH_PACKAGES | tr '\n' ' ' | xargs)
           else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            echo "npm_tag=latest" >> $GITHUB_OUTPUT
+            FLAT="$SELECTED"
           fi
+          echo "packages=$FLAT" >> $GITHUB_OUTPUT
+          echo "Selected: $SELECTED"
+          echo "Resolved: $FLAT"
 
-      - name: Build @solana/idl
-        run: pnpm --filter @solana/idl run build
-
-      - name: Pack tarball
-        working-directory: packages/idl
+      - name: Filter out private packages (scaffolded / web)
+        id: filter
         run: |
-          mkdir -p ../../.npm-pack
-          npm pack --pack-destination ../../.npm-pack
-          echo ""
-          echo "Packed tarball:"
-          ls -la ../../.npm-pack/
+          PUBLISHABLE=""
+          for pkg in ${{ steps.targets.outputs.packages }}; do
+            IS_PRIVATE=$(node -p "require('./packages/${pkg}/package.json').private === true")
+            NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+            if [ "$IS_PRIVATE" = "true" ]; then
+              echo "· skipping ${NAME} (private: true — scaffolded, not yet ready to publish)"
+            else
+              PUBLISHABLE="$PUBLISHABLE $pkg"
+            fi
+          done
+          PUBLISHABLE=$(echo $PUBLISHABLE | xargs)
+          if [ -z "$PUBLISHABLE" ]; then
+            echo "::error::No publishable packages remain after filtering out private ones."
+            exit 1
+          fi
+          echo "packages=$PUBLISHABLE" >> $GITHUB_OUTPUT
+          echo "Publishable: $PUBLISHABLE"
 
-      - name: 'Guard - Fail if tarball missing dist/ artifacts'
+      # ─── Build + pack ───────────────────────────────────────────────────
+      - name: Build target packages
         run: |
-          for tarball in .npm-pack/*.tgz; do
-            CONTENTS=$(tar -tzf "$tarball")
-
-            for required in package/dist/index.js package/dist/index.d.ts package/dist/cli.js; do
-              if ! echo "$CONTENTS" | grep -q "$required"; then
-                echo "FAIL: ${tarball} is missing ${required}"
-                exit 1
-              fi
-            done
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+            echo "==> Building ${NAME}"
+            pnpm --filter "${NAME}" run build
           done
 
-          echo "All required dist/ artifacts present"
-
-      - name: Publish to npm
+      - name: Pack target packages with pnpm
+        # `pnpm pack` (not `npm pack`) so any `workspace:*` cross-deps
+        # get rewritten to resolved versions inside the tarball.
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          NPM_TAG="${{ steps.prerelease.outputs.npm_tag }}"
-          TARBALL=$(ls .npm-pack/*.tgz | head -1)
-          DRY_RUN="${{ github.event.inputs.dry-run }}"
+          mkdir -p .npm-pack
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            echo "==> Packing packages/${pkg}"
+            (cd packages/${pkg} && pnpm pack --pack-destination ../../.npm-pack)
+          done
+          echo ""
+          echo "Packed tarballs:"
+          ls -la .npm-pack/
 
-          if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
-            echo "Tarball not found"
-            ls -la .npm-pack/ || true
+      # ─── Guards (fail BEFORE any publish call) ──────────────────────────
+      - name: 'Guard - Tarballs must not contain workspace: protocol'
+        run: |
+          FAILED=0
+          for tarball in .npm-pack/*.tgz; do
+            tar -xzf "$tarball" package/package.json -O > /tmp/pkg.json
+            if grep -q '"workspace:' /tmp/pkg.json; then
+              echo "  ✗ ${tarball} contains workspace: dependencies"
+              grep '"workspace:' /tmp/pkg.json || true
+              FAILED=1
+            else
+              echo "  ✓ ${tarball}"
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "Use \`pnpm pack\` (not \`npm pack\`) so workspace:* is replaced with the resolved version."
             exit 1
           fi
 
-          if [ "$DRY_RUN" == "true" ]; then
-            echo "DRY RUN: Publishing ${TARBALL} with tag '${NPM_TAG}'..."
-            npm publish "$TARBALL" --access public --tag "$NPM_TAG" --dry-run
-            echo "Dry run completed (OIDC auth validated, no package uploaded)"
-          else
-            echo "Publishing ${TARBALL} with tag '${NPM_TAG}'..."
-            npm publish "$TARBALL" --access public --tag "$NPM_TAG"
-            echo "Published successfully"
+      - name: 'Guard - Tarballs must contain required dist artifacts'
+        # ESM + CJS + .d.ts for everyone; additionally every `bin` entry
+        # listed in each package's package.json must exist in the tarball.
+        run: |
+          FAILED=0
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+            VERSION=$(node -p "require('./packages/${pkg}/package.json').version")
+            FILESAFE=$(echo "$NAME" | sed 's|@||; s|/|-|g')
+            TARBALL=".npm-pack/${FILESAFE}-${VERSION}.tgz"
+            if [ ! -f "$TARBALL" ]; then
+              echo "  ✗ ${NAME}: tarball not found at ${TARBALL}"
+              FAILED=1
+              continue
+            fi
+            CONTENTS=$(tar -tzf "$TARBALL")
+            LOCAL_FAIL=0
+            for required in package/dist/index.js package/dist/index.cjs package/dist/index.d.ts; do
+              if ! echo "$CONTENTS" | grep -q "$required"; then
+                echo "  ✗ ${TARBALL} missing ${required}"
+                LOCAL_FAIL=1
+              fi
+            done
+            # bin entries: e.g. `bin: { idl: './dist/cli.js' }` → require dist/cli.js
+            BIN_PATHS=$(node -p "Object.values(require('./packages/${pkg}/package.json').bin || {}).map(p => p.replace(/^\\.\\//, '')).join('\\n')" | grep -v '^$' || true)
+            for bin in $BIN_PATHS; do
+              if ! echo "$CONTENTS" | grep -q "package/${bin}"; then
+                echo "  ✗ ${TARBALL} missing bin file package/${bin}"
+                LOCAL_FAIL=1
+              fi
+            done
+            if [ "$LOCAL_FAIL" -eq 0 ]; then
+              echo "  ✓ ${TARBALL}"
+            else
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then exit 1; fi
+
+      # ─── Pre-flight: dry-run publish + already-published check ──────────
+      - name: 'Pre-flight - npm publish dry-run for every target'
+        run: |
+          FAILED=0
+          echo "Authenticated as: $(npm whoami 2>/dev/null || echo '<no auth>')"
+          echo ""
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+            VERSION=$(node -p "require('./packages/${pkg}/package.json').version")
+            FILESAFE=$(echo "$NAME" | sed 's|@||; s|/|-|g')
+            TARBALL=".npm-pack/${FILESAFE}-${VERSION}.tgz"
+            if [[ "$VERSION" == *"-"* ]]; then NPM_TAG="beta"; else NPM_TAG="latest"; fi
+            echo "==> ${NAME}@${VERSION} (tag ${NPM_TAG})"
+
+            # Already published?
+            NPM_RC=0
+            NPM_OUT=$(npm view "${NAME}@${VERSION}" version 2>&1) || NPM_RC=$?
+            if [ "$NPM_RC" -eq 0 ] && [ -n "$NPM_OUT" ]; then
+              echo "  ✗ ${NAME}@${VERSION} already published — bump the version or drop it from targets"
+              FAILED=1
+              continue
+            fi
+            # Distinguish a real registry error from a clean 404
+            if [ "$NPM_RC" -ne 0 ] && ! echo "$NPM_OUT" | grep -q "E404"; then
+              echo "  ✗ ${NAME}: registry error (not 404):"
+              echo "$NPM_OUT" | sed 's/^/      /'
+              FAILED=1
+              continue
+            fi
+
+            if ! npm publish "$TARBALL" --access public --tag "$NPM_TAG" --dry-run > /tmp/dryrun-${pkg}.log 2>&1; then
+              echo "  ✗ ${NAME}@${VERSION} dry-run failed:"
+              sed 's/^/      /' /tmp/dryrun-${pkg}.log
+              FAILED=1
+              continue
+            fi
+            echo "  ✓ ${NAME}@${VERSION}"
+          done
+          echo ""
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Pre-flight failed. Aborting BEFORE any real publish."
+            exit 1
           fi
 
-      - name: Create and push tag
+      # ─── Real publish (skipped on dry-run) ──────────────────────────────
+      - name: Publish to npm
         if: ${{ github.event.inputs.dry-run != 'true' }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping"
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-            echo "Created tag $TAG"
-          fi
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+            VERSION=$(node -p "require('./packages/${pkg}/package.json').version")
+            FILESAFE=$(echo "$NAME" | sed 's|@||; s|/|-|g')
+            TARBALL=".npm-pack/${FILESAFE}-${VERSION}.tgz"
+            if [[ "$VERSION" == *"-"* ]]; then NPM_TAG="beta"; else NPM_TAG="latest"; fi
+            echo "==> Publishing ${NAME}@${VERSION} (tag ${NPM_TAG})"
+            npm publish "$TARBALL" --access public --tag "$NPM_TAG"
+          done
 
-      - name: Create GitHub Release
+      - name: Create and push tags
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        run: |
+          for pkg in ${{ steps.filter.outputs.packages }}; do
+            VERSION=$(node -p "require('./packages/${pkg}/package.json').version")
+            TAG="${pkg}-v${VERSION}"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "· tag $TAG already exists"
+            else
+              git tag "$TAG"
+              git push origin "$TAG"
+              echo "✓ created tag $TAG"
+            fi
+          done
+
+      - name: Create GitHub Releases (one per published package)
         if: ${{ github.event.inputs.dry-run != 'true' }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tagName = `v${{ steps.version.outputs.version }}`;
-            const version = `${{ steps.version.outputs.version }}`;
-            const releaseName = `@solana/idl v${version}`;
-            const isPrerelease = '${{ steps.prerelease.outputs.is_prerelease }}' === 'true';
-
-            const body = [
-              `## @solana/idl v${version}`,
-              '',
-              '### Installation',
-              '',
-              '```bash',
-              `npm install @solana/idl@${version}`,
-              '```',
-              '',
-              `https://www.npmjs.com/package/@solana/idl/v/${version}`,
-            ].join('\n');
-
-            try {
-              await github.rest.repos.getReleaseByTag({
+            const fs = require('fs');
+            const packages = `${{ steps.filter.outputs.packages }}`.trim().split(/\s+/).filter(Boolean);
+            for (const pkg of packages) {
+              const pj = JSON.parse(fs.readFileSync(`packages/${pkg}/package.json`, 'utf8'));
+              const { name, version } = pj;
+              const tagName = `${pkg}-v${version}`;
+              const releaseName = `${name} v${version}`;
+              const isPrerelease = version.includes('-');
+              const body = [
+                `## ${name} v${version}`,
+                '',
+                '### Installation',
+                '',
+                '```bash',
+                `npm install ${name}@${version}`,
+                '```',
+                '',
+                `https://www.npmjs.com/package/${name}/v/${version}`,
+              ].join('\n');
+              try {
+                await github.rest.repos.getReleaseByTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag: tagName,
+                });
+                console.log(`· release ${tagName} already exists`);
+                continue;
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+              await github.rest.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag: tagName,
+                tag_name: tagName,
+                name: releaseName,
+                body: body.trim(),
+                draft: false,
+                prerelease: isPrerelease,
               });
-              console.log(`Release ${tagName} already exists, skipping`);
-              return;
-            } catch (e) {
-              if (e.status !== 404) throw e;
+              console.log(`✓ created release ${releaseName}`);
             }
 
-            await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tagName,
-              name: releaseName,
-              body: body.trim(),
-              draft: false,
-              prerelease: isPrerelease,
-            });
-
       - name: Publish summary
+        if: always()
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          NPM_TAG="${{ steps.prerelease.outputs.npm_tag }}"
           DRY_RUN="${{ github.event.inputs.dry-run }}"
-
-          if [ "$DRY_RUN" == "true" ]; then
-            cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## @solana/idl Publish — DRY RUN
-
-          **Version**: \`${VERSION}\`
-          **npm tag**: \`${NPM_TAG}\`
-          **Mode**: Dry run (OIDC auth validated, no package uploaded, no tag, no release)
-          EOF
-          else
-            cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## @solana/idl Published
-
-          **Version**: \`${VERSION}\`
-          **Tag**: \`v${VERSION}\`
-          **npm tag**: \`${NPM_TAG}\`
-
-          Published to npm: https://www.npmjs.com/package/@solana/idl/v/${VERSION}
-          GitHub release: https://github.com/${{ github.repository }}/releases/tag/v${VERSION}
-          EOF
-          fi
+          {
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "## Publish — DRY RUN"
+            else
+              echo "## Published"
+            fi
+            echo ""
+            echo "| Package | Version | npm tag | Status |"
+            echo "|---------|---------|---------|--------|"
+            for pkg in ${{ steps.filter.outputs.packages }}; do
+              NAME=$(node -p "require('./packages/${pkg}/package.json').name")
+              VERSION=$(node -p "require('./packages/${pkg}/package.json').version")
+              if [[ "$VERSION" == *"-"* ]]; then NPM_TAG="beta"; else NPM_TAG="latest"; fi
+              if [ "$DRY_RUN" = "true" ]; then
+                STATUS="dry-run validated"
+              else
+                STATUS="https://www.npmjs.com/package/${NAME}/v/${VERSION}"
+              fi
+              echo "| \`${NAME}\` | \`${VERSION}\` | \`${NPM_TAG}\` | ${STATUS} |"
+            done
+          } >> $GITHUB_STEP_SUMMARY
