@@ -77,6 +77,36 @@ function downloadUnknownIdl(idl: unknown, filename: string) {
   downloadJson(text, filename);
 }
 
+function CopyableAddress({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API may be unavailable (insecure origin, denied perms). The
+      // address is still rendered in full so the user can mouse-select instead.
+    }
+  }, [address]);
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Click to copy'}
+      aria-label={`Copy address ${address}`}
+      className={`text-xs font-mono px-2 py-0.5 rounded transition-colors cursor-pointer break-all text-left ${
+        copied
+          ? 'text-emerald-300 bg-emerald-950/50'
+          : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800'
+      }`}
+    >
+      {address}
+      {copied && <span className="ml-1.5 text-emerald-400">✓</span>}
+    </button>
+  );
+}
+
 function ActiveRange({ v }: { v: IdlVersion }) {
   const to = v.activeTo === 'current' ? 'current' : `slot ${v.activeTo.slot}`;
   const toTime = v.activeTo !== 'current' ? v.activeTo.time : null;
@@ -540,11 +570,9 @@ export default function Home() {
             </div>
 
             <section>
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
                 <h2 className="text-base font-semibold">Anchor IDL</h2>
-                <span className="text-xs text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded font-mono">
-                  {historyData.anchorAddress.slice(0, 8)}…
-                </span>
+                <CopyableAddress address={historyData.anchorAddress} />
                 {historyData.anchor.length > 0 && (
                   <span className="text-xs text-emerald-500 bg-emerald-950/50 px-2 py-0.5 rounded">
                     {historyData.anchor.length} version{historyData.anchor.length !== 1 ? 's' : ''}
@@ -555,11 +583,9 @@ export default function Home() {
             </section>
 
             <section>
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
                 <h2 className="text-base font-semibold">Program Metadata (PMP)</h2>
-                <span className="text-xs text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded font-mono">
-                  {historyData.pmpAddress.slice(0, 8)}…
-                </span>
+                <CopyableAddress address={historyData.pmpAddress} />
                 {historyData.pmp.length > 0 && (
                   <span className="text-xs text-emerald-500 bg-emerald-950/50 px-2 py-0.5 rounded">
                     {historyData.pmp.length} version{historyData.pmp.length !== 1 ? 's' : ''}
