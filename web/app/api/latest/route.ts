@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchLatestIdls } from '@core/latest-idl';
+import { fetchLatestIdls } from '@solana/idl';
 import {
   envVarForCluster,
   parseCluster,

@@ -1,0 +1,7 @@
+# Empty workspace declaration on purpose: marks `web/` as its own pnpm
+# project root so `pnpm install` (run here directly or by Vercel with
+# Root Directory = web/) doesn't walk up to the repo's pnpm-workspace.yaml
+# and treat web as a sibling of packages/*. The web app is intentionally
+# decoupled — it consumes the published @solana/idl from npm, not the
+# in-repo workspace package.
+packages: []

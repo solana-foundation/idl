@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchAllHistories } from '@core/history';
-import type { Snapshot } from '@core/rpc';
+import { fetchAllHistories, type Snapshot } from '@solana/idl';
 import {
   envVarForCluster,
   parseCluster,
