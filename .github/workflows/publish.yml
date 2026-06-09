@@ -327,7 +327,6 @@ jobs:
             }
 
       - name: Publish summary
-        if: always()
         run: |
           DRY_RUN="${{ github.event.inputs.dry-run }}"
           {
