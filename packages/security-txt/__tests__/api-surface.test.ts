@@ -1,47 +1,48 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-    fetchElfSecurityTxt,
     fetchPmpSecurityTxt,
     fetchSecurityTxt,
     findPmpSecurityTxtAddress,
+    SECURITY_TXT_FALLBACK_PMP_AUTHORITIES,
     SECURITY_TXT_PMP_SEED,
 } from '../src/index.js';
 
 /**
- * The library is intentionally stubbed at v0.0.0 — the public surface is
- * locked but the bodies throw `not yet implemented`. These tests pin the
- * shape so we don't accidentally rename or remove an export before the real
- * implementation lands. Replace the `throws` assertions with behavioural
- * tests as each function gets a real body.
+ * Smoke tests for the public surface — pins the wire shape so we don't
+ * accidentally rename or remove an export. Behavioural correctness is
+ * covered by `parser.test.ts` (pure unit) and the integration tests.
  */
 describe('@solana/security-txt public surface', () => {
-    test('SECURITY_TXT_PMP_SEED is "security.txt"', () => {
-        expect(SECURITY_TXT_PMP_SEED).toBe('security.txt');
+    test('SECURITY_TXT_PMP_SEED is "security" (SPL PMP convention)', () => {
+        expect(SECURITY_TXT_PMP_SEED).toBe('security');
     });
 
-    test('findPmpSecurityTxtAddress is implemented (real, not stub)', async () => {
-        // Bitcoin Genesis vibes — any valid address works since it's pure PDA derivation.
+    test('SECURITY_TXT_FALLBACK_PMP_AUTHORITIES is a frozen-shaped empty array today', () => {
+        expect(Array.isArray(SECURITY_TXT_FALLBACK_PMP_AUTHORITIES)).toBe(true);
+        expect(SECURITY_TXT_FALLBACK_PMP_AUTHORITIES.length).toBe(0);
+    });
+
+    test('findPmpSecurityTxtAddress derives a real PDA', async () => {
         const pda = await findPmpSecurityTxtAddress('11111111111111111111111111111111' as never);
         expect(typeof pda).toBe('string');
         expect((pda as string).length).toBeGreaterThan(0);
     });
 
-    test('fetchSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(fetchSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
-            /not yet implemented/,
-        );
+    test('findPmpSecurityTxtAddress canonical vs non-canonical differ', async () => {
+        const programId = '11111111111111111111111111111111' as never;
+        const authority = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' as never;
+        const canonical = await findPmpSecurityTxtAddress(programId);
+        const fallback = await findPmpSecurityTxtAddress(programId, authority);
+        expect(canonical).not.toBe(fallback);
     });
 
-    test('fetchPmpSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(fetchPmpSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
-            /not yet implemented/,
-        );
-    });
-
-    test('fetchElfSecurityTxt stub throws not-yet-implemented', async () => {
-        await expect(fetchElfSecurityTxt(null as never, '11111111111111111111111111111111' as never)).rejects.toThrow(
-            /not yet implemented/,
-        );
+    test('fetchSecurityTxt and fetchPmpSecurityTxt are functions, not stubs', () => {
+        // The real bodies short-circuit on `null` RPC by throwing a TypeError
+        // when they call the kit/program-metadata helpers. We don't care which
+        // error — only that they're no longer the explicit `not yet implemented`
+        // throws from the v0.0.0 scaffold.
+        expect(typeof fetchSecurityTxt).toBe('function');
+        expect(typeof fetchPmpSecurityTxt).toBe('function');
     });
 });

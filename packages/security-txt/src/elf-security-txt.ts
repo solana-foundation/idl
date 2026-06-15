@@ -1,24 +1,39 @@
 import type { Address } from '@solana/kit';
-import { createSolanaRpc } from '@solana/kit';
 
+import { fetchProgramElf } from './elf-loader.js';
+import { extractSecurityTxtSection, parseSecurityTxtPayload, payloadToString } from './parser.js';
+import type { SolanaRpcClient } from './rpc.js';
 import type { ElfSecurityTxt } from './types.js';
 
-type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
-
 /**
- * Resolve the legacy ELF-embedded security.txt for `programId`. Resolves the
- * program data account, decodes the BPF ELF, locates the `.security.txt`
- * section, and parses its `=` / `\0`-delimited key/value pairs as defined by
- * https://github.com/neodyme-labs/solana-security-txt.
+ * Resolve the legacy ELF-embedded security.txt for `programId`. Fetches the
+ * program (and its `ProgramData` child, for the upgradeable loader), scans
+ * the BPF binary for a `.security.txt` section emitted by the
+ * [neodyme-labs `security_txt!` macro][neodyme], and parses its
+ * `\0`-delimited key/value pairs.
  *
- * Returns `null` if the program has no `.security.txt` section, the program
- * data account can't be loaded, or the section bytes don't parse.
+ * Returns `null` whenever no security.txt can be produced:
+ *   - the program account doesn't exist
+ *   - the program isn't owned by a known BPF loader (Upgradeable or v2)
+ *   - the binary contains no `=====BEGIN SECURITY.TXT V1=====` sentinel
  *
- * NOT YET IMPLEMENTED — the public API surface is locked but the body is a
- * stub. The implementation will land in a follow-up commit; in the meantime
- * the package is `private: true` so it can't be published.
+ * The returned `address` is the program account itself (i.e. `programId`),
+ * matching the on-chain identity callers expect. The raw, byte-exact
+ * payload between the BEGIN/END sentinels is preserved on `content` for
+ * hashing or diffing; `fields` is the typed view of the known keys.
+ *
+ * [neodyme]: https://github.com/neodyme-labs/solana-security-txt
  */
-// oxlint-disable-next-line typescript/require-await -- stub; real impl will await an RPC call
-export async function fetchElfSecurityTxt(_rpc: SolanaRpcClient, _programId: Address): Promise<ElfSecurityTxt | null> {
-    throw new Error('fetchElfSecurityTxt: not yet implemented');
+export async function fetchElfSecurityTxt(rpc: SolanaRpcClient, programId: Address): Promise<ElfSecurityTxt | null> {
+    const elf = await fetchProgramElf(rpc, programId);
+    if (!elf) return null;
+
+    const payload = extractSecurityTxtSection(elf.bytes);
+    if (!payload) return null;
+
+    return {
+        address: programId,
+        content: payloadToString(payload),
+        fields: parseSecurityTxtPayload(payload),
+    };
 }

@@ -1,30 +1,29 @@
 import type { Address } from '@solana/kit';
-import { createSolanaRpc } from '@solana/kit';
 
 import { fetchElfSecurityTxt } from './elf-security-txt.js';
 import { fetchPmpSecurityTxt } from './pmp-security-txt.js';
+import type { SolanaRpcClient } from './rpc.js';
 import type { SecurityTxt } from './types.js';
-
-type SolanaRpcClient = ReturnType<typeof createSolanaRpc>;
 
 /**
  * Resolve the live on-chain security.txt for `programId`, trying PMP first
- * (canonical, then fallback authorities) and falling back to the legacy
- * ELF-embedded `.security.txt` section.
+ * (canonical, then any non-canonical fallback authority) and falling back
+ * to the legacy ELF-embedded `.security.txt` section.
  *
  * Symmetric with `fetchIdl` from `@solana/idl`: same PMP-first → legacy
- * fallback shape, same `{ type, content, ... }` return.
+ * fallback shape, same `{ programId, type, content, ... }` return.
  *
- * NOT YET IMPLEMENTED — the public API surface is locked but the body is a
- * stub. The implementation will land in a follow-up commit; in the meantime
- * the package is `private: true` so it can't be published.
+ * Returns `null` when neither source produces a security.txt.
+ *
+ * Pass `options.authority` to pin a specific PMP authority (only affects
+ * the PMP path; the ELF path doesn't have authorities).
  */
 export async function fetchSecurityTxt(
     rpc: SolanaRpcClient,
     programId: Address,
-    _options?: { authority?: Address | null },
+    options?: { authority?: Address | null },
 ): Promise<SecurityTxt | null> {
-    const pmp = await fetchPmpSecurityTxt(rpc, programId);
+    const pmp = await fetchPmpSecurityTxt(rpc, programId, options?.authority);
     if (pmp) {
         return {
             content: pmp.content,

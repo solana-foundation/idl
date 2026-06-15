@@ -1,7 +1,6 @@
 {
     "name": "@solana/security-txt",
-    "version": "0.0.0",
-    "private": true,
+    "version": "0.1.0",
     "description": "Fetch a Solana program's security.txt from either the on-chain Program Metadata (PMP) account or the legacy ELF-embedded `.security.txt` section.",
     "keywords": [
         "kit",
@@ -22,6 +21,9 @@
         "type": "git",
         "url": "git+https://github.com/solana-foundation/idl.git",
         "directory": "packages/security-txt"
+    },
+    "bin": {
+        "security-txt": "./dist/cli.js"
     },
     "files": [
         "dist",
@@ -48,14 +50,19 @@
     "scripts": {
         "build": "tsup && tsc --project tsconfig.build.json",
         "clean": "rm -rf dist *.tsbuildinfo",
+        "dev": "tsx src/cli.ts",
         "lint": "oxlint && oxfmt --check",
         "lint:fix": "oxlint --fix && oxfmt",
         "test": "vitest run",
+        "try": "tsx scripts/try-fetch.ts",
+        "debug-pmp": "tsx scripts/debug-pmp.ts",
         "typecheck": "tsc --noEmit",
         "prepack": "pnpm run clean && pnpm run build"
     },
     "dependencies": {
-        "@solana-program/program-metadata": "^0.5.1"
+        "@solana-program/program-metadata": "^0.5.1",
+        "commander": "^13.0.0",
+        "picocolors": "^1.1.1"
     },
     "devDependencies": {
         "@solana/kit": "^6.8.0"

@@ -99,7 +99,7 @@ The positional argument is a program address in default / `--latest` / `--histor
 
 | Flag                        | Description                                                                                               |
 | --------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `-r, --rpc <url>`           | Solana RPC URL (or set `RPC_URL` env var)                                                                 |
+| `-r, --rpc <url>`           | Solana RPC URL (or set `RPC_URL` env var; defaults to public mainnet with a stderr warning if unset)      |
 | `-s, --seed <seed>`         | Metadata seed, PMP only (default `idl`)                                                                   |
 | `-a, --authority <address>` | Authority address for non-canonical PMP metadata                                                          |
 | `--latest`                  | Print the `{programId, pmpAddress, anchorAddress, pmp[], anchor[]}` payload (same shape as `/api/latest`) |
