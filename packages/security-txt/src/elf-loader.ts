@@ -79,7 +79,12 @@ export async function fetchProgramElf(
         if (pdBytes.length < PROGRAM_DATA_HEADER_NO_AUTH) return null;
         if (U32_DECODER.decode(pdBytes, 0) !== STATE_PROGRAM_DATA) return null;
 
+        // Borsh `Option<Pubkey>` tag is strictly 0 (None) or 1 (Some). Any
+        // other byte means the account is corrupt or isn't ProgramData at
+        // all — bail rather than silently mis-slice and feed the parser
+        // bytes that happen to start at offset 13.
         const authorityOption = pdBytes[12];
+        if (authorityOption !== 0 && authorityOption !== 1) return null;
         const elfStart = authorityOption === 1 ? PROGRAM_DATA_HEADER_WITH_AUTH : PROGRAM_DATA_HEADER_NO_AUTH;
         if (pdBytes.length <= elfStart) return null;
 

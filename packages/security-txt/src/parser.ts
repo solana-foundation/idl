@@ -91,7 +91,7 @@ function indexOfBytes(haystack: Uint8Array, needle: Uint8Array, from: number): n
  * the BEGIN sentinel directly. The neodyme macro emits the section verbatim
  * into the binary, so the sentinel survives the link step and is trivially
  * findable. The false-positive risk (someone's string literal happening to
- * contain `=====BEGIN SECURITY.TXT V1=====`) is mitigated by also requiring
+ * contain `=======BEGIN SECURITY.TXT V1=======`) is mitigated by also requiring
  * a matching END sentinel within {@link MAX_SECTION_SCAN_BYTES}.
  */
 export function extractSecurityTxtSection(bytes: Uint8Array): Uint8Array | null {

@@ -107,6 +107,24 @@ function downloadUnknownIdl(idl: unknown, filename: string) {
   downloadJson(text, filename);
 }
 
+/**
+ * Download a security.txt payload as plain text. Lowest-common-denominator
+ * format that's never wrong: ELF content is NUL-delimited bytes (not JSON);
+ * PMP content may be JSON or NUL-delimited. `.txt` + `text/plain` opens
+ * cleanly in any editor for both, and `jq < file.txt` works for the JSON
+ * case if the user wants it. The filename includes the source so the user
+ * still knows where the payload came from.
+ */
+function downloadSecurityTxt(content: string, programId: string, type: 'pmp' | 'elf') {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `security-txt-${programId.slice(0, 8)}-${type}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function CopyableAddress({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
@@ -510,12 +528,7 @@ function SecurityTxtPanel({ data }: { data: SecurityTxtResponse }) {
           </span>
           <button
             type="button"
-            onClick={() =>
-              downloadJson(
-                data.content,
-                `security-txt-${data.programId.slice(0, 8)}.json`,
-              )
-            }
+            onClick={() => downloadSecurityTxt(data.content, data.programId, data.type)}
             className="text-xs font-medium text-zinc-300 hover:text-white px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 cursor-pointer"
           >
             Download

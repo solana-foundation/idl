@@ -15,7 +15,8 @@ import type { ElfSecurityTxt } from './types.js';
  * Returns `null` whenever no security.txt can be produced:
  *   - the program account doesn't exist
  *   - the program isn't owned by a known BPF loader (Upgradeable or v2)
- *   - the binary contains no `=====BEGIN SECURITY.TXT V1=====` sentinel
+ *   - the binary contains no `=======BEGIN SECURITY.TXT V1=======` sentinel
+ *     (the literal the neodyme macro emits — seven `=` on each side)
  *
  * The returned `address` is the program account itself (i.e. `programId`),
  * matching the on-chain identity callers expect. The raw, byte-exact
