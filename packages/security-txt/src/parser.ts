@@ -1,8 +1,16 @@
 import type { SecurityTxtFields } from './types.js';
 
-/** Sentinels written by the neodyme-labs `security_txt!` macro. */
-const BEGIN_SENTINEL = '=====BEGIN SECURITY.TXT V1=====';
-const END_SENTINEL = '=====END SECURITY.TXT V1=====';
+/**
+ * Sentinels written by the neodyme-labs `security_txt!` macro. The exact byte
+ * counts matter: the macro emits seven `=` characters on each side, so any
+ * shorter literal would still `indexOf`-match (as a substring) but leave
+ * leftover `=` bytes inside the extracted payload — which then shifts every
+ * NUL-delimited (key, value) pair by one slot and silently produces an empty
+ * `fields` object. See the upstream macro at
+ * https://github.com/neodyme-labs/solana-security-txt for the exact literal.
+ */
+const BEGIN_SENTINEL = '=======BEGIN SECURITY.TXT V1=======';
+const END_SENTINEL = '=======END SECURITY.TXT V1=======';
 
 /**
  * Hard cap on how many bytes after a BEGIN marker we'll scan looking for the

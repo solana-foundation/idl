@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 
-type SearchMode = 'current' | 'latest' | 'history';
+type SearchMode = 'current' | 'latest' | 'history' | 'security';
 
 type Cluster = 'mainnet-beta' | 'devnet';
 
@@ -53,6 +53,36 @@ type LatestResponse = {
   anchorAddress: string;
   pmp: LatestSnapshot[];
   anchor: LatestSnapshot[];
+};
+
+type SecurityTxtFields = {
+  // Neodyme `.security.txt` keys
+  name?: string;
+  project_url?: string;
+  contacts?: string;
+  policy?: string;
+  preferred_languages?: string;
+  encryption?: string;
+  source_code?: string;
+  source_release?: string;
+  source_revision?: string;
+  auditors?: string;
+  acknowledgements?: string;
+  expiry?: string;
+  // SPL Program Metadata-extended keys
+  logo?: string;
+  description?: string;
+  notification?: string;
+  sdk?: string;
+  version?: string;
+};
+
+/** Response from `GET /api/security-txt` (default mode — resolved PMP → ELF). */
+type SecurityTxtResponse = {
+  programId: string;
+  type: 'pmp' | 'elf';
+  content: string;
+  fields: SecurityTxtFields;
 };
 
 function downloadJson(content: string, filename: string) {
@@ -189,8 +219,9 @@ function ModeTabs({
 }) {
   const tabs: { id: SearchMode; label: string; hint: string }[] = [
     { id: 'current', label: 'Current IDL', hint: 'GET /api/idl' },
-    { id: 'latest', label: 'Latest both', hint: 'GET /api/latest' },
-    { id: 'history', label: 'Full history', hint: 'GET /api/history' },
+    { id: 'latest', label: 'Latest IDLs', hint: 'GET /api/latest' },
+    { id: 'history', label: 'IDL history', hint: 'GET /api/history' },
+    { id: 'security', label: 'security.txt', hint: 'GET /api/security-txt' },
   ];
   return (
     <div className="flex flex-wrap gap-2 mb-4">
@@ -328,6 +359,176 @@ function LatestTrackCard({
   );
 }
 
+/**
+ * Display order chosen so the "who do I contact and how" core surfaces
+ * first, then provenance (source/auditors), then identity/metadata. Any
+ * keys returned by the API but not listed here are appended in encounter
+ * order so we don't silently drop future additions.
+ */
+const SECURITY_TXT_FIELD_ORDER: (keyof SecurityTxtFields)[] = [
+  'name',
+  'description',
+  'contacts',
+  'policy',
+  'encryption',
+  'preferred_languages',
+  'auditors',
+  'acknowledgements',
+  'source_code',
+  'source_release',
+  'source_revision',
+  'project_url',
+  'sdk',
+  'logo',
+  'version',
+  'notification',
+  'expiry',
+];
+
+/**
+ * Best-effort URL detection so we can render `contacts` / `policy` / etc.
+ * as clickable links when the value is a single URL. We keep it simple —
+ * comma-separated multi-value fields (`contacts`) stay as plain text so
+ * the user can see the full content; we don't try to parse `email:` /
+ * `link:` / `discord:` prefixes.
+ */
+function maybeLinkify(value: string): React.ReactNode {
+  const trimmed = value.trim();
+  if (/^https?:\/\/\S+$/.test(trimmed)) {
+    return (
+      <a
+        href={trimmed}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-zinc-200 hover:text-white underline underline-offset-2 break-all"
+      >
+        {trimmed}
+      </a>
+    );
+  }
+  return <span className="text-zinc-200 break-words">{value}</span>;
+}
+
+function SourceBadge({ type }: { type: 'pmp' | 'elf' }) {
+  const style =
+    type === 'pmp'
+      ? 'bg-violet-950/60 text-violet-300 border-violet-800/50'
+      : 'bg-amber-950/60 text-amber-300 border-amber-800/50';
+  const label = type === 'pmp' ? 'PMP' : 'ELF';
+  return (
+    <span
+      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${style}`}
+      title={
+        type === 'pmp'
+          ? 'Program Metadata (seed: security)'
+          : 'Embedded .security.txt section in the program ELF binary'
+      }
+    >
+      {label}
+    </span>
+  );
+}
+
+function SecurityTxtPanel({ data }: { data: SecurityTxtResponse }) {
+  // Stable display: known keys in our preferred order first, then any extras.
+  const ordered: [string, string][] = [];
+  const seen = new Set<string>();
+  for (const k of SECURITY_TXT_FIELD_ORDER) {
+    const v = data.fields[k];
+    if (typeof v === 'string') {
+      ordered.push([k, v]);
+      seen.add(k);
+    }
+  }
+  for (const [k, v] of Object.entries(data.fields)) {
+    if (typeof v === 'string' && !seen.has(k)) {
+      ordered.push([k, v]);
+    }
+  }
+
+  const totalFields = ordered.length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-zinc-400">Resolved source</span>
+        <SourceBadge type={data.type} />
+        <code className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-1 rounded">
+          {data.programId}
+        </code>
+      </div>
+      <p className="text-zinc-500 text-xs">
+        PMP-first (seed <code className="text-zinc-400">security</code>) → ELF fallback
+        (
+        <a
+          href="https://github.com/neodyme-labs/solana-security-txt"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-zinc-400 hover:text-zinc-200 underline underline-offset-2"
+        >
+          neodyme macro
+        </a>
+        ). Returns whichever the program publishes.
+      </p>
+
+      {totalFields === 0 ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-zinc-500 text-sm italic">
+          The {data.type.toUpperCase()} payload was found, but contained no recognized
+          security.txt keys. Raw content is below.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-zinc-900/50 text-xs">
+            <span className="text-zinc-400">
+              Parsed fields ({totalFields})
+            </span>
+          </div>
+          <dl className="divide-y divide-zinc-900">
+            {ordered.map(([k, v]) => (
+              <div
+                key={k}
+                className="grid grid-cols-[minmax(140px,1fr)_3fr] gap-4 px-4 py-3 hover:bg-zinc-900/30 transition-colors"
+              >
+                <dt className="text-xs font-mono text-zinc-500 self-start break-words">
+                  {k}
+                </dt>
+                <dd className="text-sm break-words">{maybeLinkify(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-zinc-900/50">
+          <span className="text-zinc-400 text-xs">
+            Raw on-chain content (
+            {data.type === 'pmp'
+              ? 'PMP, UTF-8 decoded'
+              : 'ELF .security.txt section, UTF-8 decoded with \\0 separators'}
+            )
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              downloadJson(
+                data.content,
+                `security-txt-${data.programId.slice(0, 8)}.json`,
+              )
+            }
+            className="text-xs font-medium text-zinc-300 hover:text-white px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 cursor-pointer"
+          >
+            Download
+          </button>
+        </div>
+        <pre className="p-4 text-xs font-mono text-zinc-300 overflow-x-auto max-h-[min(50vh,400px)] overflow-y-auto whitespace-pre-wrap break-words">
+          {data.content.replaceAll('\0', '·')}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function LatestPanel({ data }: { data: LatestResponse }) {
   return (
     <div className="space-y-4">
@@ -350,12 +551,14 @@ export default function Home() {
   const [currentData, setCurrentData] = useState<CurrentIdlResponse | null>(null);
   const [latestData, setLatestData] = useState<LatestResponse | null>(null);
   const [historyData, setHistoryData] = useState<HistoryResponse | null>(null);
+  const [securityData, setSecurityData] = useState<SecurityTxtResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const clearResults = useCallback(() => {
     setCurrentData(null);
     setLatestData(null);
     setHistoryData(null);
+    setSecurityData(null);
     setError(null);
   }, []);
 
@@ -387,6 +590,16 @@ export default function Home() {
         } else {
           setLatestData(json as LatestResponse);
         }
+      } else if (mode === 'security') {
+        const res = await fetch(
+          `/api/security-txt?programId=${encodeURIComponent(id)}&cluster=${cluster}`,
+        );
+        const json = (await res.json()) as SecurityTxtResponse & { error?: string };
+        if (!res.ok) {
+          setError(json.error ?? `HTTP ${res.status}`);
+        } else {
+          setSecurityData(json as SecurityTxtResponse);
+        }
       } else {
         const url = new URL('/api/history', window.location.origin);
         url.searchParams.set('programId', id);
@@ -413,7 +626,9 @@ export default function Home() {
       ? 'Fetching current IDL…'
       : mode === 'latest'
         ? 'Fetching latest PMP and Anchor…'
-        : 'Reconstructing IDL history from on-chain transactions…';
+        : mode === 'security'
+          ? 'Fetching security.txt (PMP first, then ELF fallback)…'
+          : 'Reconstructing IDL history from on-chain transactions…';
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -454,13 +669,11 @@ export default function Home() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">
         <div className="mb-10">
           <p className="text-zinc-400 mb-4 text-sm leading-relaxed max-w-xl">
-            {"Look up a program's IDL: quick "}
-            <strong className="text-zinc-300">current</strong>
-            {' fetch, '}
-            <strong className="text-zinc-300">side-by-side latest</strong>
-            {', or full '}
-            <strong className="text-zinc-300">on-chain history</strong>
-            {' (PMP and Anchor).'}
+            {"Look up a program's "}
+            <strong className="text-zinc-300">IDL</strong>
+            {' (current, latest both, or full on-chain history — PMP and Anchor) and its on-chain '}
+            <strong className="text-zinc-300">security.txt</strong>
+            {' (PMP-first, ELF fallback).'}
           </p>
 
           <ModeTabs
@@ -557,6 +770,10 @@ export default function Home() {
 
         {latestData && !loading && mode === 'latest' && <LatestPanel data={latestData} />}
 
+        {securityData && !loading && mode === 'security' && (
+          <SecurityTxtPanel data={securityData} />
+        )}
+
         {historyData && !loading && mode === 'history' && (
           <div className="space-y-10">
             <div className="flex items-baseline gap-3 mb-2">
@@ -602,7 +819,8 @@ export default function Home() {
         <div>
           Current (<code className="text-zinc-500">/api/idl</code>), latest (
           <code className="text-zinc-500">/api/latest</code>), history (
-          <code className="text-zinc-500">/api/history</code>)
+          <code className="text-zinc-500">/api/history</code>), security.txt (
+          <code className="text-zinc-500">/api/security-txt</code>)
           <span className="mx-2 text-zinc-700">·</span>
           <Link
             href="/docs"

@@ -4,6 +4,8 @@
 
 Fetch a Solana program's [security.txt](https://github.com/neodyme-labs/solana-security-txt) from on-chain. Mirrors `@solana/idl`'s shape and resolution philosophy:
 
+> **Publishing** a security.txt is out of scope for this package — use the official [`@solana-program/program-metadata`](https://github.com/solana-program/program-metadata#securitytxt-file-format) CLI: `npx @solana-program/program-metadata@latest write security <program-id> ./security.json`. This package then reads what that wrote.
+
 | Source           | How                                                                                                                                                                                                                                                                                                 |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **PMP (new)**    | A [Program Metadata](https://github.com/solana-program/program-metadata) account with seed `security` (per the SPL PMP convention — not `security.txt`), looked up canonical-first then via fallback authorities.                                                                                   |

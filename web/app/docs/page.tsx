@@ -52,6 +52,9 @@ export default function DocsPage() {
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-semibold tracking-tight">Docs</h1>
             <nav className="flex gap-3 text-xs text-zinc-500">
+              <a href="#publish" className="hover:text-zinc-300 transition-colors">
+                Publish
+              </a>
               <a href="#api" className="hover:text-zinc-300 transition-colors">
                 API
               </a>
@@ -76,6 +79,94 @@ export default function DocsPage() {
             </ExtLink>
             .
           </p>
+        </section>
+
+        {/* Publish */}
+        <section id="publish" className="space-y-8 scroll-mt-20">
+          <header className="space-y-2">
+            <h2 className="text-2xl font-semibold tracking-tight">Publish your own</h2>
+            <p className="text-zinc-400 text-sm leading-relaxed max-w-2xl">
+              This explorer <Strong>reads</Strong> on-chain metadata. To <Strong>write</Strong>{' '}
+              it — both IDLs and <Inline>security.txt</Inline> — use the official{' '}
+              <ExtLink href="https://github.com/solana-program/program-metadata">
+                <Inline>@solana-program/program-metadata</Inline>
+              </ExtLink>{' '}
+              CLI. Same seed-based PMP account that this site fetches from: <Inline>idl</Inline>{' '}
+              for IDLs, <Inline>security</Inline> for security.txt.
+            </p>
+          </header>
+
+          <article className="space-y-3">
+            <h3 className="text-sm font-medium text-zinc-300">Upload an IDL</h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              Run as the program's upgrade authority to publish a <Strong>canonical</Strong>{' '}
+              IDL (the one this explorer surfaces by default):
+            </p>
+            <Code>{`npx @solana-program/program-metadata@latest write idl <program-id> ./idl.json`}</Code>
+          </article>
+
+          <article className="space-y-3">
+            <h3 className="text-sm font-medium text-zinc-300">
+              Upload a <Inline>security.txt</Inline>
+            </h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              Same command, swap the seed. Use the SPL JSON shape — the full 17 keys (Neodyme
+              spec + PMP extensions like <Inline>logo</Inline> / <Inline>description</Inline> /{' '}
+              <Inline>version</Inline>) are documented{' '}
+              <ExtLink href="https://github.com/solana-program/program-metadata#securitytxt-file-format">
+                upstream
+              </ExtLink>
+              .
+            </p>
+            <Code>{`npx @solana-program/program-metadata@latest write security <program-id> ./security.json`}</Code>
+            <Code>{`{
+  "name": "MyProgram",
+  "project_url": "https://example.com",
+  "contacts": ["email:security@example.com", "discord:MyProgram#1234"],
+  "policy": "https://example.com/security-policy",
+  "source_code": "https://github.com/example/program",
+  "auditors": ["Audit Firm A", "Security Researcher B"],
+  "description": "Short description of what the program does",
+  "version": "0.1.0"
+}`}</Code>
+          </article>
+
+          <article className="space-y-3">
+            <h3 className="text-sm font-medium text-zinc-300">
+              Canonical vs. third-party uploads
+            </h3>
+            <ul className="text-sm text-zinc-400 space-y-1 pl-5 list-disc leading-relaxed">
+              <li>
+                <Strong>Canonical</Strong> — signed by the program's upgrade authority. Default
+                when you run <Inline>write</Inline> with that keypair. One per (program, seed)
+                pair. This is what the explorer shows first.
+              </li>
+              <li>
+                <Strong>Third-party (non-canonical)</Strong> — anyone can publish with{' '}
+                <Inline>--non-canonical &lt;your-pubkey&gt;</Inline>. Useful for frozen programs
+                that no longer have an active upgrade authority, or for community-maintained
+                IDLs. Looked up via the <Inline>?authority=&lt;pubkey&gt;</Inline> query param
+                on this site's API.
+              </li>
+            </ul>
+            <p className="text-zinc-500 text-xs">
+              Multisig (Squads) and buffered uploads are also supported — see the{' '}
+              <ExtLink href="https://github.com/solana-program/program-metadata#usage">
+                upstream README
+              </ExtLink>{' '}
+              for the full command surface.
+            </p>
+          </article>
+
+          <article className="space-y-3">
+            <h3 className="text-sm font-medium text-zinc-300">Anchor IDLs (legacy)</h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              Programs that publish via <Inline>anchor idl init</Inline> /{' '}
+              <Inline>anchor idl upgrade</Inline> still work — this site falls back to the
+              Anchor IDL account when no PMP IDL is found. New programs should prefer PMP since
+              it's the path the Solana Explorer and Codama tooling are aligning on.
+            </p>
+          </article>
         </section>
 
         {/* HTTP API */}
@@ -154,6 +245,52 @@ curl "${BASE}/api/history?programId=${PROGRAM}&cluster=mainnet-beta"`}</Code>
 curl -X POST "${BASE}/api/history" \\
   -H 'Content-Type: application/json' \\
   -d '{ "programId": "${PROGRAM}", "cluster": "mainnet-beta" }'`}</Code>
+          </article>
+
+          <article className="space-y-3">
+            <h3 className="text-base font-semibold">
+              <MethodTag method="GET" />
+              <Inline className="text-sm py-0.5">/api/security-txt</Inline>
+            </h3>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              Program <Inline>security.txt</Inline> — contacts, policy, auditors, and so on
+              — resolved <Strong>PMP-first</Strong> (seed <Inline>security</Inline>) with{' '}
+              <Strong>ELF fallback</Strong> (
+              <ExtLink href="https://github.com/neodyme-labs/solana-security-txt">
+                neodyme macro
+              </ExtLink>
+              ). Returns the parsed{' '}
+              <Inline>{`{ programId, type: 'pmp' | 'elf', content, fields }`}</Inline>{' '}
+              shape that mirrors <Inline>/api/idl</Inline>. <Inline>404</Inline> if neither
+              source has one. Powered by{' '}
+              <ExtLink href="https://github.com/solana-foundation/idl/tree/main/packages/security-txt">
+                <Inline>@solana/security-txt</Inline>
+              </ExtLink>
+              .
+            </p>
+            <Code>{`curl "${BASE}/api/security-txt?programId=Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH"`}</Code>
+            <Code>{`{
+  "programId": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+  "type": "pmp",
+  "content": "{\\"name\\":\\"SPL Memo\\", ... }",
+  "fields": {
+    "name": "SPL Memo",
+    "project_url": "https://github.com/solana-program/memo",
+    "contacts": "link:...,email:security@anza.xyz",
+    "policy": "https://github.com/solana-program/memo/blob/main/SECURITY.md",
+    "description": "Solana Program Library Memo",
+    "version": "4.0.0"
+  }
+}`}</Code>
+            <p className="text-zinc-500 text-xs">
+              Optional <Inline>?source=pmp</Inline> / <Inline>?source=elf</Inline> forces
+              one source (returns that source's full shape, with <Inline>address</Inline>{' '}
+              and — for PMP — <Inline>authority</Inline>).{' '}
+              <Inline>?source=both</Inline> returns{' '}
+              <Inline>{`{ pmp, elf }`}</Inline> with <Inline>null</Inline> for whichever
+              missed. <Inline>?authority=&lt;pubkey&gt;</Inline> pins a non-canonical PMP
+              authority.
+            </p>
           </article>
 
           <article className="space-y-3">

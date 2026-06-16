@@ -5,6 +5,8 @@
 
 Fetch and reconstruct Solana program IDLs from on-chain accounts. Supports both **Anchor IDL** accounts and the **Solana Program Metadata Program (PMP)** end-to-end, including full historical reconstruction by replaying on-chain transactions.
 
+> **Publishing** an IDL is out of scope for this package — use the official [`@solana-program/program-metadata`](https://github.com/solana-program/program-metadata) CLI: `npx @solana-program/program-metadata@latest write idl <program-id> ./idl.json`. This package then reads what that wrote.
+
 | Surface                                  | Use case                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
 | **npm package** `@solana/idl`            | Import in Node services and tools                                               |

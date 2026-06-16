@@ -55,7 +55,6 @@
         "lint:fix": "oxlint --fix && oxfmt",
         "test": "vitest run",
         "try": "tsx scripts/try-fetch.ts",
-        "debug-pmp": "tsx scripts/debug-pmp.ts",
         "typecheck": "tsc --noEmit",
         "prepack": "pnpm run clean && pnpm run build"
     },

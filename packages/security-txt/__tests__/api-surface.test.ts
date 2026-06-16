@@ -1,3 +1,4 @@
+import { address } from '@solana/kit';
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -14,6 +15,9 @@ import {
  * covered by `parser.test.ts` (pure unit) and the integration tests.
  */
 describe('@solana/security-txt public surface', () => {
+    const PROGRAM_ID = address('11111111111111111111111111111111');
+    const AUTHORITY = address('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+
     test('SECURITY_TXT_PMP_SEED is "security" (SPL PMP convention)', () => {
         expect(SECURITY_TXT_PMP_SEED).toBe('security');
     });
@@ -24,16 +28,14 @@ describe('@solana/security-txt public surface', () => {
     });
 
     test('findPmpSecurityTxtAddress derives a real PDA', async () => {
-        const pda = await findPmpSecurityTxtAddress('11111111111111111111111111111111' as never);
+        const pda = await findPmpSecurityTxtAddress(PROGRAM_ID);
         expect(typeof pda).toBe('string');
-        expect((pda as string).length).toBeGreaterThan(0);
+        expect(pda.length).toBeGreaterThan(0);
     });
 
     test('findPmpSecurityTxtAddress canonical vs non-canonical differ', async () => {
-        const programId = '11111111111111111111111111111111' as never;
-        const authority = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' as never;
-        const canonical = await findPmpSecurityTxtAddress(programId);
-        const fallback = await findPmpSecurityTxtAddress(programId, authority);
+        const canonical = await findPmpSecurityTxtAddress(PROGRAM_ID);
+        const fallback = await findPmpSecurityTxtAddress(PROGRAM_ID, AUTHORITY);
         expect(canonical).not.toBe(fallback);
     });
 

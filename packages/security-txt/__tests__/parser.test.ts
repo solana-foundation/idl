@@ -7,8 +7,11 @@ import {
     payloadToString,
 } from '../src/parser.js';
 
-const BEGIN = '=====BEGIN SECURITY.TXT V1=====';
-const END = '=====END SECURITY.TXT V1=====';
+// MUST stay in sync with the neodyme macro literal (7 `=` on each side).
+// Mismatch here vs. the parser's constants would silently break extraction —
+// see the regression test at the bottom of this file.
+const BEGIN = '=======BEGIN SECURITY.TXT V1=======';
+const END = '=======END SECURITY.TXT V1=======';
 
 /**
  * Build the exact byte sequence the neodyme-labs `security_txt!` macro
@@ -133,6 +136,33 @@ describe('parseSecurityTxtPayload', () => {
         const bytes = buildMacroBytes({});
         const inner = extractSecurityTxtSection(bytes)!;
         expect(parseSecurityTxtPayload(inner)).toEqual({});
+    });
+
+    test('regression: parses the EXACT neodyme macro byte layout (Token-2022 shape)', () => {
+        // This test pins the parser to the literal 7-`=` sentinels the
+        // upstream `security_txt!` macro emits. A previous version of the
+        // parser hardcoded 5 `=` instead, which still indexOf-matched as a
+        // substring of the 7-`=` sentinel but left leftover `==` bytes in
+        // the payload and shifted every (key, value) pair by one slot —
+        // silently producing `fields: {}` for every real-world ELF
+        // security.txt. Token-2022 was the surface that exposed this.
+        const enc = new TextEncoder();
+        const wireBytes = enc.encode(
+            '=======BEGIN SECURITY.TXT V1=======\0' +
+                'name\0SPL Token-2022\0' +
+                'project_url\0https://www.solana-program.com/docs/token-2022\0' +
+                'contacts\0email:security@anza.xyz\0' +
+                'policy\0https://github.com/solana-program/token-2022/blob/master/SECURITY.md\0' +
+                '=======END SECURITY.TXT V1=======\0',
+        );
+        const inner = extractSecurityTxtSection(wireBytes);
+        expect(inner).not.toBeNull();
+        expect(parseSecurityTxtPayload(inner!)).toEqual({
+            contacts: 'email:security@anza.xyz',
+            name: 'SPL Token-2022',
+            policy: 'https://github.com/solana-program/token-2022/blob/master/SECURITY.md',
+            project_url: 'https://www.solana-program.com/docs/token-2022',
+        });
     });
 });
 

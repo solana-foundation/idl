@@ -17,6 +17,9 @@ importers:
       '@solana/kit':
         specifier: ^6.0.0
         version: 6.9.0(typescript@5.9.3)
+      '@solana/security-txt':
+        specifier: file:../packages/security-txt
+        version: file:../packages/security-txt(@solana/kit@6.9.0(typescript@5.9.3))
       next:
         specifier: ^15.0.0
         version: 15.5.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -612,6 +615,13 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  '@solana/security-txt@file:../packages/security-txt':
+    resolution: {directory: ../packages/security-txt, type: directory}
+    engines: {node: '>=20'}
+    hasBin: true
+    peerDependencies:
+      '@solana/kit': ^6.0.0
 
   '@solana/signers@6.9.0':
     resolution: {integrity: sha512-x7WyoRm9IORMqeSqNivZgyY+RERPkmqWxpINPD13kUH+oaZzonORIgxk2Lz+u5iPRXiJPkdRPrQ4FoFWv8i6kQ==}
@@ -1552,6 +1562,13 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
+
+  '@solana/security-txt@file:../packages/security-txt(@solana/kit@6.9.0(typescript@5.9.3))':
+    dependencies:
+      '@solana-program/program-metadata': 0.5.1(@solana/kit@6.9.0(typescript@5.9.3))
+      '@solana/kit': 6.9.0(typescript@5.9.3)
+      commander: 13.1.0
+      picocolors: 1.1.1
 
   '@solana/signers@6.9.0(typescript@5.9.3)':
     dependencies:
