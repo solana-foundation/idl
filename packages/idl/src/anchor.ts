@@ -114,10 +114,10 @@ export function getDiscriminators(): Promise<Discriminators> {
             }),
             idlIxTag: idlIxTagHash.slice(0, 8).reverse(),
         });
-  })().catch(err => {
-      discriminatorsPromise = null;
-      throw err;
-  });
+    })().catch(err => {
+        discriminatorsPromise = null;
+        throw err;
+    });
     return discriminatorsPromise;
 }
 
