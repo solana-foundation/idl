@@ -4,6 +4,7 @@ import { fetchEncodedAccount } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
 import { inflate } from './decompress.js';
+import { IdlDecodeError } from './errors.js';
 import { decodePmpIdlFromBufferAccount, fetchPmpIdl } from './pmp-idl.js';
 import { readU32LE, type SolanaRpcClient } from './rpc.js';
 
@@ -86,6 +87,56 @@ export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): 
     if (content === null) return null;
 
     return { address: idlAddr, content };
+}
+
+/** Result of {@link resolveAnchorIdl}: a parsed, shape-validated Anchor IDL. */
+export type ResolvedAnchorIdl = {
+    address: Address;
+    /** Parsed Anchor IDL JSON (validated to at least have an `instructions` array). */
+    idl: unknown;
+};
+
+/**
+ * Strict variant of {@link fetchAnchorIdl} that distinguishes the three
+ * outcomes consumers usually care about, instead of collapsing them into one
+ * `null`:
+ *
+ *  - **No IDL published** — the derived account doesn't exist → returns `null`.
+ *  - **Present but undecodable** — the account exists but its bytes aren't a
+ *    valid, parseable, well-shaped IDL → throws {@link IdlDecodeError}.
+ *  - **RPC/transport failure** — the underlying `getAccountInfo` rejects →
+ *    that `SolanaError` propagates (classify it with `classifyRpcError`).
+ *
+ * On success returns the IDL account address plus the parsed JSON, so callers
+ * don't re-`JSON.parse` the raw string or re-validate the Anchor shape
+ * themselves. Use {@link fetchAnchorIdl} when you want the raw content string
+ * and `null`-on-any-failure semantics.
+ */
+export async function resolveAnchorIdl(rpc: SolanaRpcClient, programId: Address): Promise<ResolvedAnchorIdl | null> {
+    const idlAddr = await findAnchorIdlAddress(programId);
+    const account = await fetchEncodedAccount(rpc, idlAddr);
+    if (!account.exists) return null;
+
+    const content = await decodeAnchorIdlAccountBytes(account.data);
+    if (content === null) {
+        throw new IdlDecodeError('Anchor IDL account present but bytes are not a decodable IdlAccount', {
+            address: idlAddr,
+            reason: 'bytes',
+        });
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(content);
+    } catch (cause) {
+        throw new IdlDecodeError('Decoded Anchor IDL is not valid JSON', { address: idlAddr, cause, reason: 'json' });
+    }
+
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { instructions?: unknown }).instructions)) {
+        throw new IdlDecodeError('Decoded Anchor IDL has unexpected shape', { address: idlAddr, reason: 'shape' });
+    }
+
+    return { address: idlAddr, idl: parsed };
 }
 
 /**
