@@ -3,7 +3,6 @@ import { type Address, fetchEncodedAccount, getAddressDecoder, getU32Decoder } f
 
 import type { SolanaRpcClient } from './types.js';
 
-
 /**
  * `UpgradeableLoaderState` discriminators from
  * https://docs.rs/solana-bpf-loader-program/latest/. We only care about the
