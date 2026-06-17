@@ -121,7 +121,7 @@ describe('CLI ↔ library equivalence on BUYux', () => {
         });
     });
 
-    describe('--latest (side-by-side with slot/time)', () => {
+    describe('--latest (PMP + Anchor side-by-side)', () => {
         it('CLI prints the {programId, pmpAddress, anchorAddress, pmp, anchor} payload', async () => {
             const { stdout, stderr, exitCode } = await runCliCaptured([
                 BUYUX,
@@ -140,13 +140,15 @@ describe('CLI ↔ library equivalence on BUYux', () => {
             expect(parsed.anchor).toHaveLength(1);
             expect(parsed.pmp[0]!.type).toBe('pmp');
             expect(parsed.anchor[0]!.type).toBe('anchor');
-            expect(parsed.pmp[0]!.activeTo).toBe('current');
-            // Slot/time were captured for both sources (lastWrite signature exists).
-            expect(parsed.pmp[0]!.slot).not.toBeNull();
-            expect(parsed.anchor[0]!.slot).not.toBeNull();
             // Parsed IDL version field (BUYux is at v0.1.0).
             expect(parsed.pmp[0]!.version).toBe('0.1.0');
             expect(parsed.anchor[0]!.version).toBe('0.1.0');
+            // Latest path intentionally omits per-version slot/time —
+            // those would require a sig walk that can be griefed for
+            // pennies (see the module-level comment in latest-idl.ts).
+            // Callers that need accurate publish timing use --history.
+            expect(parsed.pmp[0]!).not.toHaveProperty('slot');
+            expect(parsed.pmp[0]!).not.toHaveProperty('activeFrom');
         });
 
         it('library returns the exact same JSON as the CLI', async () => {

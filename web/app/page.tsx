@@ -40,10 +40,6 @@ type CurrentIdlResponse = {
 type LatestSnapshot = {
   type: 'pmp' | 'anchor';
   version: string | null;
-  slot: string | null;
-  time: string | null;
-  activeFrom: { slot: string; time: string | null } | null;
-  activeTo: 'current';
   content: string;
 };
 
@@ -358,12 +354,9 @@ function LatestTrackCard({
         <p className="text-zinc-500 text-sm italic">No on-chain IDL for this track.</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-          {v.slot && (
-            <span>
-              Last write slot <span className="text-zinc-300 tabular-nums">{v.slot}</span>
-              {v.time && <span className="text-zinc-500"> ({v.time})</span>}
-            </span>
-          )}
+          <span className="text-zinc-500">
+            Switch to <span className="text-zinc-400">IDL history</span> for per-version publish times.
+          </span>
           <button
             type="button"
             onClick={() => downloadJson(v.content, `idl-latest-${fileSlug}.json`)}

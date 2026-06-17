@@ -412,7 +412,7 @@ export function buildProgram(options: RunCliOptions = {}): Command {
         .description(
             'Fetch on-chain IDLs for Solana programs. ' +
                 'Default: the live IDL (canonical PMP → fndn fallback PMP → Anchor). ' +
-                'Use --latest for the side-by-side payload with slot/time, --history to replay the full ' +
+                'Use --latest for the PMP + Anchor side-by-side payload, --history to replay the full ' +
                 'version history, or --buffer to decode a staging buffer account directly.',
         )
         .version(PKG_VERSION)
@@ -422,7 +422,7 @@ export function buildProgram(options: RunCliOptions = {}): Command {
         .option('-a, --authority <address>', 'Authority address (for non-canonical PMP metadata)')
         .option(
             '--latest',
-            'Print {programId, pmpAddress, anchorAddress, pmp[], anchor[]} with version/slot/time (same shape as GET /api/latest)',
+            'Print {programId, pmpAddress, anchorAddress, pmp[], anchor[]} with parsed version (same shape as GET /api/latest). For publish timing, use --history.',
         )
         .option('--history', 'Replay the full IDL version history from on-chain transactions')
         .option(
@@ -490,7 +490,7 @@ export function buildProgram(options: RunCliOptions = {}): Command {
                 return;
             }
 
-            // ─── --latest (side-by-side with slot/time) ────────────────────────────
+            // ─── --latest (PMP + Anchor side-by-side) ─────────────────────────────
             if (opts.latest) {
                 const latest = await fetchLatestIdls(rpc, addr, {
                     seed,
