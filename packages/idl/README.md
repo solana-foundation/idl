@@ -78,42 +78,14 @@ Types: `Idl`, `IdlSource`, `AnchorIdl`, `BufferIdl`, `PmpIdl`, `PmpIdlLookup`, `
 
 ## Browser usage
 
-`@solana/idl`'s own code is isomorphic — it uses Web-standard `crypto.subtle`
-(SHA-256) and `DecompressionStream` instead of `node:crypto`/`node:zlib`, so it
-runs in the browser, Node ≥ 18, and Bun. Runnable browser examples (one per
-bundler — bun, esbuild, Vite, webpack) live in [`examples/`](../../examples).
+`@solana/idl` is isomorphic — it runs in the browser, Node ≥ 18, and Bun with no
+polyfills. Production bundlers (`vite build`, `webpack --mode production`,
+`bun build --production`) just work. esbuild is the only one that needs a define:
 
-One caveat comes from a dependency, not from this package: `@solana-program/program-metadata`
-statically imports `@iarna/toml` (and, in newer versions, `yaml`) to support
-TOML/YAML metadata formats. IDLs are always JSON, so that code never runs for
-this package — but the imports drag in Node shims (`stream`, plus a `Buffer`
-polyfill that expects Node's `global`). To bundle for the browser you therefore
-need to give those shims somewhere to land. Pick whichever matches your bundler:
-
-- **Define `global`** before your bundle evaluates. The simplest, bundler-agnostic
-  form is a tiny inline script in your HTML, ahead of your module script:
-
-    ```html
-    <script>
-        globalThis.global ||= globalThis;
-    </script>
-    <script type="module" src="/src/main.tsx"></script>
-    ```
-
-    (Vite/webpack can instead set `define: { global: 'globalThis' }`.) This alone
-    is enough for **Bun** and esbuild builds, which auto-polyfill `Buffer`.
-
-- **Vite / Next / webpack** — add a Node-polyfill layer so `Buffer`/`process`/`global`
-  and stubbed `node:*` modules exist, e.g. [`vite-plugin-node-polyfills`](https://github.com/davidmyersdev/vite-plugin-node-polyfills)
-  for Vite. Most Solana web apps already include this for `Buffer`.
-
-- **esbuild / strict bundlers (no auto-polyfill)** — alias the unused format
-  parsers to empty stubs so `node:stream` is never pulled in, and define `global`:
-
-    ```jsonc
-    // esbuild: the TOML/YAML parsers are dead code for IDLs
-    { "alias": { "@iarna/toml": "./empty.js", "yaml": "./empty.js" }, "define": { "global": "globalThis" } }
-    ```
+```jsonc
+// esbuild
+{ "define": { "process.env.NODE_ENV": "\"production\"" } }
+```
 
 ## CLI
 

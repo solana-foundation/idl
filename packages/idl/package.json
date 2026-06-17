@@ -61,14 +61,14 @@
         "prepack": "pnpm run clean && pnpm run build"
     },
     "dependencies": {
-        "@solana-program/program-metadata": "^0.5.1",
+        "@solana-program/program-metadata": "^0.7.0",
         "commander": "^13.0.0"
     },
     "devDependencies": {
         "@solana/kit": "^6.8.0"
     },
     "peerDependencies": {
-        "@solana/kit": "^6.0.0"
+        "@solana/kit": "^6.4.0"
     },
     "engines": {
         "node": ">=20"

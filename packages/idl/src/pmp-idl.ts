@@ -128,13 +128,11 @@ export type PmpDecodeFormat = {
  * default and what every standard IDL upload tool produces. Gzip and plain
  * UTF-8 come last as best-effort fallbacks for non-standard payloads.
  *
- * Gzip is kept here on purpose even though `@solana-program/program-metadata`
- * v0.5.x currently can't decode it — the upstream `uncompressData(Gzip)`
- * branch does `throw pako.ungzip(data)` instead of `return`, so today the
- * candidate is dead code. We keep it so the day they ship the one-line fix
- * we transparently start accepting gzip buffers without a coordinated
- * release on this side. The cost of the extra throw/catch per fetch is
- * negligible.
+ * Gzip decoding works as of `@solana-program/program-metadata` v0.7.0, which
+ * fixed the upstream `uncompressData(Gzip)` branch — it used to
+ * `throw pako.ungzip(data)` instead of returning it, so on v0.5.x this
+ * candidate was dead code. The fallback order is unchanged: a buffer that
+ * doesn't decode as zlib is now genuinely retried as gzip before plain UTF-8.
  */
 const DEFAULT_PMP_DECODE_CANDIDATES: readonly PmpDecodeFormat[] = [
     { compression: Compression.Zlib, encoding: Encoding.Utf8 },
