@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Address, createSolanaRpc } from '@solana/kit';
+import { Address, createSolanaRpc, isAddress } from '@solana/kit';
 import {
   fetchElfSecurityTxt,
   fetchPmpSecurityTxt,
@@ -29,9 +29,9 @@ function parseSource(value: string | null): Source | null {
 export async function GET(req: NextRequest) {
   try {
     const programId = req.nextUrl.searchParams.get('programId')?.trim();
-    if (!programId || programId.length < 32) {
+    if (!programId || !isAddress(programId)) {
       return NextResponse.json(
-        { error: 'Missing or invalid programId query parameter' },
+        { error: 'Missing or invalid programId query parameter (expected a base58 Solana address)' },
         { status: 400 },
       );
     }
@@ -60,10 +60,19 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Validate the optional authority up-front. Without this an arbitrary
+    // string is cast to Address and fed to findMetadataPda, which throws
+    // out of @solana/kit's base58 codec and is then caught by the outermost
+    // 500 handler — a caller mistake should surface as 400, not 5xx
+    // (otherwise monitoring conflates it with real server faults).
     const authorityRaw = req.nextUrl.searchParams.get('authority')?.trim();
-    const authority: Address | undefined = authorityRaw
-      ? (authorityRaw as Address)
-      : undefined;
+    if (authorityRaw && !isAddress(authorityRaw)) {
+      return NextResponse.json(
+        { error: 'Invalid authority query parameter (expected a base58 Solana address)' },
+        { status: 400 },
+      );
+    }
+    const authority: Address | undefined = authorityRaw ? (authorityRaw as Address) : undefined;
 
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;

@@ -1,6 +1,6 @@
 {
     "name": "@solana/idl",
-    "version": "0.1.3",
+    "version": "0.2.0",
     "description": "Fetch and reconstruct Solana program IDLs from on-chain Anchor and Program Metadata (PMP) accounts.",
     "keywords": [
         "anchor",
