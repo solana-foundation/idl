@@ -10,9 +10,10 @@ import { defineConfig } from 'tsup';
  * Type declarations are emitted separately by `tsc --emitDeclarationOnly`
  * (see `tsconfig.build.json`) and live alongside the bundles in `dist/`.
  *
- * Runtime deps (`@solana-program/program-metadata`, `commander`, `picocolors`)
- * and the `@solana/kit` peer dep are kept external so consumers get a single
- * copy resolved through their own `node_modules`.
+ * Runtime deps (`@solana-program/program-metadata`, `commander`) and the
+ * `@solana/kit` peer dep are kept external so consumers get a single copy
+ * resolved through their own `node_modules`. The CLI's color helpers are
+ * inlined in `src/colors.ts` to avoid a dependency on `picocolors`.
  */
 export default defineConfig([
     {

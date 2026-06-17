@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Address, createSolanaRpc } from '@solana/kit';
 import { Command } from 'commander';
-import pc from 'picocolors';
+
+import pc from './colors.js';
 
 const PKG_VERSION: string = (() => {
     try {

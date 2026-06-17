@@ -5,8 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { type Address, createSolanaRpc } from '@solana/kit';
 import { Command } from 'commander';
-import pc from 'picocolors';
 
+import pc from './colors.js';
 import { fetchSecurityTxt } from './current-security-txt.js';
 import { fetchElfSecurityTxt } from './elf-security-txt.js';
 import { fetchPmpSecurityTxt } from './pmp-security-txt.js';
