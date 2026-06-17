@@ -11,5 +11,13 @@ export {
 export { fetchElfSecurityTxt } from './elf-security-txt.js';
 
 // ─── Public types ────────────────────────────────────────────────────────────
-export type { ElfSecurityTxt, PmpSecurityTxt, SecurityTxt, SecurityTxtFields, SecurityTxtSource } from './types.js';
-export type { SolanaRpcClient } from './rpc.js';
+export type {
+    ElfSecurityTxt,
+    NeodymeSecurityTxtFields,
+    PmpExtraSecurityTxtFields,
+    PmpSecurityTxt,
+    SecurityTxt,
+    SecurityTxtFields,
+    SecurityTxtSource,
+    SolanaRpcClient,
+} from './types.js';

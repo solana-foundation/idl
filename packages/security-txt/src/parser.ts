@@ -1,4 +1,4 @@
-import type { SecurityTxtFields } from './types.js';
+import type { NeodymeSecurityTxtFields, PmpExtraSecurityTxtFields, SecurityTxtFields } from './types.js';
 
 /**
  * Sentinels written by the neodyme-labs `security_txt!` macro. The exact byte
@@ -24,13 +24,13 @@ const MAX_SECTION_SCAN_BYTES = 16 * 1024;
 const TEXT_DECODER = new TextDecoder('utf-8', { fatal: false });
 
 /**
- * Every key the package will surface in {@link SecurityTxtFields}, drawn
- * from BOTH the neodyme `security.txt` spec and the SPL Program Metadata
- * convention. See the JSDoc on {@link SecurityTxtFields} for the source
- * split and rationale.
+ * The 12 keys defined by the original [neodyme spec][neodyme]. These are
+ * the only keys the `security_txt!` Rust macro emits into the ELF section,
+ * so ELF-sourced security.txts will only ever populate from this set.
+ *
+ * [neodyme]: https://github.com/neodyme-labs/solana-security-txt#format
  */
-const KNOWN_KEYS = new Set<keyof SecurityTxtFields>([
-    // Neodyme `.security.txt` spec
+export const NEODYME_KEYS: ReadonlySet<keyof NeodymeSecurityTxtFields> = new Set([
     'name',
     'project_url',
     'contacts',
@@ -43,13 +43,31 @@ const KNOWN_KEYS = new Set<keyof SecurityTxtFields>([
     'auditors',
     'acknowledgements',
     'expiry',
-    // Extra keys carried by the SPL Program Metadata JSON convention
+]);
+
+/**
+ * The 5 extension keys defined by the SPL Program Metadata convention but
+ * NOT by the original neodyme spec. PMP-sourced security.txts (JSON
+ * uploads via `program-metadata write security ...`) commonly populate
+ * these; ELF-sourced ones never will.
+ */
+export const PMP_EXTRA_KEYS: ReadonlySet<keyof PmpExtraSecurityTxtFields> = new Set([
     'logo',
     'description',
     'notification',
     'sdk',
     'version',
 ]);
+
+/**
+ * Union of every key the package will surface in {@link SecurityTxtFields}.
+ * Both parsers ({@link parseSecurityTxtPayload} for NUL-delimited and
+ * {@link parseJsonSecurityTxt} for JSON) currently accept the full union,
+ * because consumer uploads sometimes mix conventions. If a caller wants to
+ * filter to a stricter subset post-parse, the two sub-sets are exported
+ * above for that purpose.
+ */
+const KNOWN_KEYS: ReadonlySet<keyof SecurityTxtFields> = new Set([...NEODYME_KEYS, ...PMP_EXTRA_KEYS]);
 
 /** Lower-cased ASCII bytes for a small literal — used for the byte-level sentinel search. */
 function asciiBytes(str: string): Uint8Array {
@@ -132,15 +150,14 @@ function splitNulPairs(payload: Uint8Array): { key: string; value: string }[] {
         parts.push(TEXT_DECODER.decode(payload.subarray(start)));
     }
 
-    // Drop leading + trailing empties. The macro's BEGIN/END sentinels each
-    // emit a `\0` that bookends the inner payload, so without this every
-    // (key, value) pair would shift by one and the keys would come out empty.
-    while (parts.length > 0 && parts[0] === '') {
-        parts.shift();
-    }
-    while (parts.length > 0 && parts[parts.length - 1] === '') {
-        parts.pop();
-    }
+    // The macro emits a single `\0` right after the BEGIN sentinel, which
+    // splits into one structural leading empty. Drop ONLY that one so the
+    // first real part is a key. We deliberately do NOT trim trailing
+    // empties: a legitimate empty value (e.g. `expiry\0\0`) ends in an empty
+    // string that would otherwise be dropped, shifting subsequent
+    // (key, value) pairs and silently losing the field. The pair loop's
+    // `i + 1 < parts.length` guard already tolerates an odd-length tail.
+    if (parts[0] === '') parts.shift();
 
     const pairs: { key: string; value: string }[] = [];
     for (let i = 0; i + 1 < parts.length; i += 2) {
@@ -173,19 +190,17 @@ export function payloadToString(payload: Uint8Array): string {
 
 /**
  * Parse a `metadata.json`-shaped security.txt — the format the SPL
- * `program-metadata metadata upload` CLI produces, which coexists with the
- * neodyme NUL-delimited format on PMP today.
+ * `program-metadata write security ...` CLI produces, which coexists with
+ * the neodyme NUL-delimited format on PMP today.
  *
- * Only the canonical security.txt keys are extracted; extras like
- * `description`, `version`, `logo` are intentionally dropped to keep
- * {@link SecurityTxtFields} pinned to the
- * [neodyme spec](https://github.com/neodyme-labs/solana-security-txt#format).
- * Callers that need the full JSON have it on the wrapping result's
- * `content` field.
+ * Extracts the full union of recognised keys ({@link NEODYME_KEYS} plus
+ * {@link PMP_EXTRA_KEYS} — 17 total). Keys outside the union are dropped
+ * from `fields` to keep the typed surface stable; callers that need the
+ * full original JSON have it on the wrapping result's `content` field.
  *
  * Array values are joined with `,` so JSON shapes like
- * `"contacts": ["email:a@x", "discord:b"]` come out matching the security.txt
- * comma-separated convention (`"email:a@x,discord:b"`).
+ * `"contacts": ["email:a@x", "discord:b"]` come out matching the
+ * security.txt comma-separated convention (`"email:a@x,discord:b"`).
  *
  * Returns `null` for non-JSON, non-object JSON, or JSON arrays. Returns
  * `{}` for a JSON object with zero recognized keys (so callers can apply

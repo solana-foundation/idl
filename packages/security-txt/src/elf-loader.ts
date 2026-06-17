@@ -1,10 +1,8 @@
+import { LOADER_V2_PROGRAM_ADDRESS, LOADER_V3_PROGRAM_ADDRESS } from '@solana-program/program-metadata';
 import { type Address, fetchEncodedAccount, getAddressDecoder, getU32Decoder } from '@solana/kit';
 
-import type { SolanaRpcClient } from './rpc.js';
+import type { SolanaRpcClient } from './types.js';
 
-/** Canonical loader IDs as base58 strings. */
-const BPF_LOADER_UPGRADEABLE_ID = 'BPFLoaderUpgradeab1e11111111111111111111111' as Address;
-const BPF_LOADER_V2_ID = 'BPFLoader2111111111111111111111111111111111' as Address;
 
 /**
  * `UpgradeableLoaderState` discriminators from
@@ -62,12 +60,12 @@ export async function fetchProgramElf(
     const owner = programAccount.programAddress;
     const programData = programAccount.data as Uint8Array;
 
-    if (owner === BPF_LOADER_V2_ID) {
+    if (owner === LOADER_V2_PROGRAM_ADDRESS) {
         // Legacy non-upgradeable loader: program account data IS the ELF.
         return programData.length > 0 ? { bytes: programData, sourceAddress: programId } : null;
     }
 
-    if (owner === BPF_LOADER_UPGRADEABLE_ID) {
+    if (owner === LOADER_V3_PROGRAM_ADDRESS) {
         // Program variant: 4-byte LE discriminator + 32-byte programdata_address.
         if (programData.length < 36) return null;
         if (U32_DECODER.decode(programData, 0) !== STATE_PROGRAM) return null;

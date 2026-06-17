@@ -2,8 +2,7 @@ import type { Address } from '@solana/kit';
 
 import { fetchProgramElf } from './elf-loader.js';
 import { extractSecurityTxtSection, parseSecurityTxtPayload, payloadToString } from './parser.js';
-import type { SolanaRpcClient } from './rpc.js';
-import type { ElfSecurityTxt } from './types.js';
+import type { ElfSecurityTxt, SolanaRpcClient } from './types.js';
 
 /**
  * Resolve the legacy ELF-embedded security.txt for `programId`. Fetches the

@@ -2,8 +2,7 @@ import type { Address } from '@solana/kit';
 
 import { fetchElfSecurityTxt } from './elf-security-txt.js';
 import { fetchPmpSecurityTxt } from './pmp-security-txt.js';
-import type { SolanaRpcClient } from './rpc.js';
-import type { SecurityTxt } from './types.js';
+import type { SecurityTxt, SolanaRpcClient } from './types.js';
 
 /**
  * Resolve the live on-chain security.txt for `programId`, trying PMP first

@@ -138,6 +138,27 @@ describe('parseSecurityTxtPayload', () => {
         expect(parseSecurityTxtPayload(inner)).toEqual({});
     });
 
+    test('regression: keeps a trailing empty value (do NOT trim trailing empties)', () => {
+        // A previous version of splitNulPairs trimmed BOTH leading and
+        // trailing empties; the trailing trim silently dropped legitimate
+        // empty values (e.g. `expiry: ''`), shifting subsequent pairs and
+        // losing data. The fix trims only the structural leading empty
+        // from the BEGIN sentinel's NUL. This test pins the contract.
+        const bytes = buildMacroBytes({ expiry: '', name: 'Example' });
+        const inner = extractSecurityTxtSection(bytes)!;
+        const fields = parseSecurityTxtPayload(inner);
+        expect(fields).toEqual({ expiry: '', name: 'Example' });
+    });
+
+    test('regression: a single-field payload with an empty value still parses', () => {
+        // Edge case of the above: the ONLY field has an empty value. The
+        // payload is `\0expiry\0\0`, which used to trim down to `['expiry']`
+        // and the pair loop dropped it entirely.
+        const bytes = buildMacroBytes({ expiry: '' });
+        const inner = extractSecurityTxtSection(bytes)!;
+        expect(parseSecurityTxtPayload(inner)).toEqual({ expiry: '' });
+    });
+
     test('regression: parses the EXACT neodyme macro byte layout (Token-2022 shape)', () => {
         // This test pins the parser to the literal 7-`=` sentinels the
         // upstream `security_txt!` macro emits. A previous version of the

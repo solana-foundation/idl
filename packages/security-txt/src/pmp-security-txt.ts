@@ -2,8 +2,7 @@ import { fetchMetadataContent, findMetadataPda, type Seed } from '@solana-progra
 import type { Address } from '@solana/kit';
 
 import { extractSecurityTxtSection, parseJsonSecurityTxt, parseSecurityTxtPayload, payloadToString } from './parser.js';
-import type { SolanaRpcClient } from './rpc.js';
-import type { PmpSecurityTxt } from './types.js';
+import type { PmpSecurityTxt, SolanaRpcClient } from './types.js';
 
 /**
  * The PMP seed convention for security.txt uploads is the bare string
