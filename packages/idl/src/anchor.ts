@@ -99,8 +99,6 @@ export function getDiscriminators(): Promise<Discriminators> {
 
         // Freeze the memoized snapshot so a consumer can't swap out a
         // discriminator and corrupt matching for the lifetime of the process.
-        // (The byte arrays themselves can't be `Object.freeze`d — it throws on
-        // typed arrays with elements — but they're never mutated internally.)
         return Object.freeze({
             global: Object.freeze({
                 close,
