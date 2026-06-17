@@ -22,11 +22,13 @@ import {
 
 /** Why an existing on-chain account could not be turned into an IDL. */
 export type IdlDecodeReason =
-    /** Account bytes don't form a decompressible `IdlAccount` (bad layout or inflate failure). */
-    | 'bytes'
-    /** Decompressed content is not valid JSON. */
+    /** Bytes don't match the `IdlAccount` header/length framing. */
+    | 'layout'
+    /** Framing matched but the zlib payload failed to inflate; `cause` holds the zlib error. */
+    | 'inflate'
+    /** Decompressed content is not valid JSON; `cause` holds the `SyntaxError`. */
     | 'json'
-    /** Parsed JSON is not a recognisable IDL (e.g. missing `instructions`). */
+    /** Parsed JSON is not a recognisable IDL (e.g. missing an `instructions` array). */
     | 'shape';
 
 /**

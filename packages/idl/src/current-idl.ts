@@ -34,24 +34,47 @@ export type BufferIdl = {
 };
 
 /**
+ * Discriminated outcome of decoding raw Anchor `IdlAccount` bytes:
+ *  - `ok` with the decompressed IDL JSON,
+ *  - a `layout` failure (bytes don't match the IdlAccount header/length framing), or
+ *  - an `inflate` failure (framing matched but the zlib payload didn't decompress),
+ *    carrying the original zlib error as `cause`.
+ */
+type AnchorDecodeResult =
+    | { ok: true; content: string }
+    | { ok: false; reason: 'layout' }
+    | { ok: false; reason: 'inflate'; cause: unknown };
+
+/**
+ * Decode raw Anchor `IdlAccount` bytes, reporting *why* decoding failed so
+ * callers that care (e.g. {@link resolveAnchorIdl}) can surface a typed error
+ * with the original cause. Most callers want {@link decodeAnchorIdlAccountBytes},
+ * which flattens this to `string | null`.
+ */
+async function tryDecodeAnchorIdlAccountBytes(raw: Uint8Array): Promise<AnchorDecodeResult> {
+    if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return { ok: false, reason: 'layout' };
+
+    const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
+    if (dataLen === 0 || ANCHOR_ACCOUNT_HEADER_LEN + dataLen > raw.length) return { ok: false, reason: 'layout' };
+
+    const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
+    try {
+        const decompressed = await inflate(compressed);
+        return { content: new TextDecoder().decode(decompressed), ok: true };
+    } catch (cause) {
+        return { cause, ok: false, reason: 'inflate' };
+    }
+}
+
+/**
  * Shared Anchor IdlAccount decoder used by both {@link fetchAnchorIdl} (which
  * derives the PDA from a program id) and {@link fetchAnchorIdlFromBuffer}
  * (which takes a raw account address). Returns the decompressed IDL JSON, or
  * null if the bytes don't match the IdlAccount layout.
  */
 async function decodeAnchorIdlAccountBytes(raw: Uint8Array): Promise<string | null> {
-    if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return null;
-
-    const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
-    if (dataLen === 0 || ANCHOR_ACCOUNT_HEADER_LEN + dataLen > raw.length) return null;
-
-    const compressed = raw.slice(ANCHOR_ACCOUNT_HEADER_LEN, ANCHOR_ACCOUNT_HEADER_LEN + dataLen);
-    try {
-        const decompressed = await inflate(compressed);
-        return new TextDecoder().decode(decompressed);
-    } catch {
-        return null;
-    }
+    const result = await tryDecodeAnchorIdlAccountBytes(raw);
+    return result.ok ? result.content : null;
 }
 
 /**
@@ -117,17 +140,23 @@ export async function resolveAnchorIdl(rpc: SolanaRpcClient, programId: Address)
     const account = await fetchEncodedAccount(rpc, idlAddr);
     if (!account.exists) return null;
 
-    const content = await decodeAnchorIdlAccountBytes(account.data);
-    if (content === null) {
-        throw new IdlDecodeError('Anchor IDL account present but bytes are not a decodable IdlAccount', {
-            address: idlAddr,
-            reason: 'bytes',
-        });
+    const decoded = await tryDecodeAnchorIdlAccountBytes(account.data);
+    if (!decoded.ok) {
+        throw decoded.reason === 'inflate'
+            ? new IdlDecodeError('Anchor IDL account present but its zlib payload failed to inflate', {
+                  address: idlAddr,
+                  cause: decoded.cause,
+                  reason: 'inflate',
+              })
+            : new IdlDecodeError('Anchor IDL account present but bytes do not match the IdlAccount layout', {
+                  address: idlAddr,
+                  reason: 'layout',
+              });
     }
 
     let parsed: unknown;
     try {
-        parsed = JSON.parse(content);
+        parsed = JSON.parse(decoded.content);
     } catch (cause) {
         throw new IdlDecodeError('Decoded Anchor IDL is not valid JSON', { address: idlAddr, cause, reason: 'json' });
     }
