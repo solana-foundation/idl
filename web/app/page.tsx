@@ -35,12 +35,18 @@ type CurrentIdlResponse = {
   programId: string;
   type: 'pmp' | 'anchor';
   idl: unknown;
+  /** false when the on-chain content isn't a usable IDL (then `idl` is the raw string). */
+  valid?: boolean;
+  reason?: 'json' | 'shape';
 };
 
 type LatestSnapshot = {
   type: 'pmp' | 'anchor';
   version: string | null;
   content: string;
+  /** false when `content` isn't usable JSON (annotated by /api/latest via parseIdl). */
+  valid?: boolean;
+  reason?: 'json' | 'shape';
 };
 
 type LatestResponse = {
@@ -286,8 +292,13 @@ function ClusterTabs({
 }
 
 function CurrentIdlPanel({ data }: { data: CurrentIdlResponse }) {
+  // `idl` is a parsed object when the on-chain content is valid JSON, or the
+  // raw string when it isn't. Either way we show it; when it isn't usable JSON
+  // we flag it (and download as .txt, since it isn't valid JSON).
+  const invalid = data.valid === false || typeof data.idl === 'string';
   const display =
     typeof data.idl === 'string' ? data.idl : JSON.stringify(data.idl, null, 2);
+  const downloadName = `idl-current-${data.programId.slice(0, 8)}.${invalid ? 'txt' : 'json'}`;
 
   return (
     <div className="space-y-4">
@@ -308,14 +319,34 @@ function CurrentIdlPanel({ data }: { data: CurrentIdlResponse }) {
         Same resolution as the CLI <code className="text-zinc-400">--current</code>: Program Metadata first (seed{' '}
         <code className="text-zinc-400">idl</code>), then Anchor.
       </p>
+      {invalid && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-800/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+          <span aria-hidden className="mt-px">
+            ⚠
+          </span>
+          <span>
+            {data.reason === 'shape' ? (
+              <>
+                The on-chain content is valid JSON but <strong>not a JSON object</strong> (an array or primitive), so it
+                isn&apos;t a usable IDL.
+              </>
+            ) : (
+              <>
+                The on-chain IDL is <strong>not valid JSON</strong>.
+              </>
+            )}{' '}
+            Showing the raw on-chain content byte-for-byte.
+          </span>
+        </div>
+      )}
       <div className="relative rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
         <div className="flex justify-end gap-2 px-3 py-2 border-b border-zinc-800 bg-zinc-900/50">
           <button
             type="button"
-            onClick={() => downloadUnknownIdl(data.idl, `idl-current-${data.programId.slice(0, 8)}.json`)}
+            onClick={() => downloadUnknownIdl(data.idl, downloadName)}
             className="text-xs font-medium text-zinc-300 hover:text-white px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 cursor-pointer"
           >
-            Download JSON
+            {invalid ? 'Download raw' : 'Download JSON'}
           </button>
         </div>
         <pre className="p-4 text-xs font-mono text-zinc-300 overflow-x-auto max-h-[min(70vh,520px)] overflow-y-auto whitespace-pre-wrap break-words">
@@ -341,29 +372,48 @@ function LatestTrackCard({
 }) {
   const ring = accent === 'violet' ? 'border-violet-900/40' : 'border-sky-900/40';
   const v = rows[0];
+  const invalid = !!v && v.valid === false;
   return (
     <div className={`rounded-lg border ${ring} bg-zinc-950/80 p-4 space-y-3`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-zinc-200">{title}</h3>
         {v && (
-          <span className="font-mono text-amber-400 text-xs">{v.version ? `v${v.version}` : '(no version)'}</span>
+          <span className="flex items-center gap-1.5">
+            {invalid && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/50"
+                title={v.reason === 'shape' ? 'Valid JSON, but not a JSON object' : 'Content is not valid JSON'}
+              >
+                invalid JSON
+              </span>
+            )}
+            <span className="font-mono text-amber-400 text-xs">{v.version ? `v${v.version}` : '(no version)'}</span>
+          </span>
         )}
       </div>
       <p className="text-[11px] font-mono text-zinc-500 break-all">{address}</p>
       {!v ? (
         <p className="text-zinc-500 text-sm italic">No on-chain IDL for this track.</p>
       ) : (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-          <span className="text-zinc-500">
-            Switch to <span className="text-zinc-400">IDL history</span> for per-version publish times.
-          </span>
-          <button
-            type="button"
-            onClick={() => downloadJson(v.content, `idl-latest-${fileSlug}.json`)}
-            className="ml-auto text-xs font-medium text-zinc-300 hover:text-white px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 cursor-pointer"
-          >
-            Download
-          </button>
+        <div className="space-y-2">
+          {invalid && (
+            <p className="text-[11px] text-amber-300/90">
+              ⚠ {v.reason === 'shape' ? 'Valid JSON but not a JSON object' : 'Not valid JSON'} — the raw on-chain content
+              is preserved byte-for-byte (download it, or open the Current IDL tab to view it).
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            <span className="text-zinc-500">
+              Switch to <span className="text-zinc-400">IDL history</span> for per-version publish times.
+            </span>
+            <button
+              type="button"
+              onClick={() => downloadJson(v.content, `idl-latest-${fileSlug}.${invalid ? 'txt' : 'json'}`)}
+              className="ml-auto text-xs font-medium text-zinc-300 hover:text-white px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 cursor-pointer"
+            >
+              {invalid ? 'Download raw' : 'Download'}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -53,12 +53,16 @@ export async function GET(req: NextRequest) {
     }
 
     // ok: parse to an object when it's JSON, otherwise pass the raw on-chain
-    // string through as `idl` (opaque, non-JSON PMP content stays byte-exact).
+    // string through as `idl` (opaque / broken-JSON content stays byte-exact).
+    // `valid` + `reason` let the UI flag content that isn't a usable IDL while
+    // still showing it.
     const parsed = parseIdl(result.content);
     return NextResponse.json({
       idl: parsed.ok ? parsed.idl : result.content,
       programId: addr,
+      reason: parsed.ok ? undefined : parsed.reason,
       type: result.source,
+      valid: parsed.ok,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
