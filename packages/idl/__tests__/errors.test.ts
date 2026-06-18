@@ -15,7 +15,7 @@ const PROGRAM = address('BUYuxRfhCMWavaUWxhGtPP3ksKEDZxCD5gzknk3JfAya');
 describe('classifyRpcError', () => {
     test('returns null for non-SolanaError input', () => {
         expect(classifyRpcError(new Error('boom'))).toBeNull();
-        expect(classifyRpcError(new IdlDecodeError('x', { address: PROGRAM, reason: 'shape' }))).toBeNull();
+        expect(classifyRpcError(new IdlDecodeError('x', { address: PROGRAM, reason: 'json' }))).toBeNull();
         expect(classifyRpcError(undefined)).toBeNull();
     });
 

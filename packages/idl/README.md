@@ -58,23 +58,23 @@ For a single source only, use `reconstructPmpHistory(rpc, programId, opts?)` or 
 
 ### Exports
 
-| Export                                           | Purpose                                                                                                                                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fetchIdl`                                       | Live IDL, PMP-first with fndn fallback then Anchor fallback                                                                                                                       |
-| `fetchAnchorIdl`                                 | Live Anchor IDL only, parsed + shape-validated: `{ idl, address }`; `null` if unpublished, throws `IdlDecodeError` if present-but-corrupt                                         |
-| `fetchPmpIdl`                                    | Live PMP IDL only: `{ content, address, authority }` (canonical then fndn)                                                                                                        |
-| `fetchIdlFromBuffer`                             | Decode a staging buffer account directly, auto-detecting Anchor vs PMP                                                                                                            |
-| `fetchAnchorIdlFromBuffer`                       | Decode an Anchor `IdlAccount` (canonical PDA or buffer) by address                                                                                                                |
-| `fetchPmpIdlFromBuffer`                          | Decode a PMP `Buffer` account by address (zlib+utf8 by default)                                                                                                                   |
-| `fetchLatestIdls`                                | PMP + Anchor side-by-side with version/slot/time (powers `--latest`)                                                                                                              |
-| `fetchAllHistories`                              | Full PMP + Anchor history side-by-side (powers `--history` / `/api/history`)                                                                                                      |
-| `reconstructPmpHistory`                          | Replay PMP transactions into a history of `VirtualState` snapshots                                                                                                                |
-| `reconstructAnchorHistory`                       | Replay Anchor IDL transactions into a history of snapshots                                                                                                                        |
-| `findAnchorIdlAddress`, `findPmpMetadataAddress` | PDA derivation helpers                                                                                                                                                            |
-| `buildPmpIdlLookups`                             | Enumerate PMP PDAs to try (canonical + every fndn fallback)                                                                                                                       |
-| `IDL_FALLBACK_PMP_AUTHORITIES`                   | Array of non-canonical PMP authorities baked into `fetchIdl` / `fetchPmpIdl`                                                                                                      |
-| `classifyRpcError`, `isTransientRpcError`        | Classify an RPC failure as `transient` (retry / 5xx) vs `misconfig`; `null` if not a `SolanaError`                                                                                |
-| `IdlDecodeError`                                 | Thrown by `fetchAnchorIdl` when an account exists but isn't a usable IDL (`reason: 'layout' \| 'inflate' \| 'json' \| 'shape'`, with the underlying `cause` for `inflate`/`json`) |
+| Export                                           | Purpose                                                                                                                                                                |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetchIdl`                                       | Live IDL, PMP-first with fndn fallback then Anchor fallback                                                                                                            |
+| `fetchAnchorIdl`                                 | Live Anchor IDL only, parsed: `{ idl, address }`; `null` if unpublished, throws `IdlDecodeError` if present-but-corrupt                                                |
+| `fetchPmpIdl`                                    | Live PMP IDL only: `{ content, address, authority }` (canonical then fndn)                                                                                             |
+| `fetchIdlFromBuffer`                             | Decode a staging buffer account directly, auto-detecting Anchor vs PMP                                                                                                 |
+| `fetchAnchorIdlFromBuffer`                       | Decode an Anchor `IdlAccount` (canonical PDA or buffer) by address                                                                                                     |
+| `fetchPmpIdlFromBuffer`                          | Decode a PMP `Buffer` account by address (zlib+utf8 by default)                                                                                                        |
+| `fetchLatestIdls`                                | PMP + Anchor side-by-side with version/slot/time (powers `--latest`)                                                                                                   |
+| `fetchAllHistories`                              | Full PMP + Anchor history side-by-side (powers `--history` / `/api/history`)                                                                                           |
+| `reconstructPmpHistory`                          | Replay PMP transactions into a history of `VirtualState` snapshots                                                                                                     |
+| `reconstructAnchorHistory`                       | Replay Anchor IDL transactions into a history of snapshots                                                                                                             |
+| `findAnchorIdlAddress`, `findPmpMetadataAddress` | PDA derivation helpers                                                                                                                                                 |
+| `buildPmpIdlLookups`                             | Enumerate PMP PDAs to try (canonical + every fndn fallback)                                                                                                            |
+| `IDL_FALLBACK_PMP_AUTHORITIES`                   | Array of non-canonical PMP authorities baked into `fetchIdl` / `fetchPmpIdl`                                                                                           |
+| `classifyRpcError`, `isTransientRpcError`        | Classify an RPC failure as `transient` (retry / 5xx) vs `misconfig`; `null` if not a `SolanaError`                                                                     |
+| `IdlDecodeError`                                 | Thrown by `fetchAnchorIdl` when an account exists but isn't a usable IDL (`reason: 'layout' \| 'inflate' \| 'json'`, with the underlying `cause` for `inflate`/`json`) |
 
 Types: `Idl`, `IdlSource`, `AnchorIdl`, `BufferIdl`, `PmpIdl`, `PmpIdlLookup`, `LatestIdls`, `LatestIdlVersion`, `AllHistories`, `VirtualState`, `Snapshot`, `SolanaRpcClient`, `RpcErrorClass`, `IdlDecodeReason`.
 

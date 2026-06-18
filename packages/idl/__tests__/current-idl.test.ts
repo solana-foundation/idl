@@ -54,9 +54,11 @@ describe('fetchAnchorIdl', () => {
         await expect(fetchAnchorIdl(rpc, PROGRAM)).rejects.toMatchObject({ reason: 'json' });
     });
 
-    test('throws IdlDecodeError(shape) when JSON lacks an instructions array', async () => {
-        const { rpc } = mockRpc({ value: { data: [buildAnchorAccount(JSON.stringify({ name: 'prog' })), 'base64'] } });
-        await expect(fetchAnchorIdl(rpc, PROGRAM)).rejects.toMatchObject({ reason: 'shape' });
+    test('returns parsed JSON without validating Anchor shape', async () => {
+        const idl = { name: 'prog' }; // no instructions array — accepted as-is
+        const { rpc } = mockRpc({ value: { data: [buildAnchorAccount(JSON.stringify(idl)), 'base64'] } });
+        const out = await fetchAnchorIdl(rpc, PROGRAM);
+        expect(out?.idl).toEqual(idl);
     });
 
     test('propagates RPC errors (does not swallow them as decode failures)', async () => {

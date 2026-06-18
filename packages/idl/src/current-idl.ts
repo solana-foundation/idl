@@ -18,10 +18,10 @@ const ANCHOR_ACCOUNT_LEN_OFFSET = 40;
 
 export type IdlSource = 'pmp' | 'anchor';
 
-/** Result of {@link fetchAnchorIdl}: a parsed, shape-validated Anchor IDL. */
+/** Result of {@link fetchAnchorIdl}: a parsed Anchor IDL. */
 export type AnchorIdl = {
     address: Address;
-    /** Parsed Anchor IDL JSON (validated to at least have an `instructions` array). */
+    /** Parsed Anchor IDL JSON. */
     idl: unknown;
 };
 
@@ -116,19 +116,19 @@ export async function fetchAnchorIdlContent(
 }
 
 /**
- * Resolve the live Anchor IDL for `programId`, parsed and shape-validated.
+ * Resolve the live Anchor IDL for `programId`, parsed from its on-chain bytes.
  * Distinguishes the three outcomes consumers care about instead of collapsing
  * them into one `null`:
  *
  *  - **No IDL published** — the derived account doesn't exist → returns `null`.
  *  - **Present but undecodable** — the account exists but its bytes aren't a
- *    valid, parseable, well-shaped IDL → throws {@link IdlDecodeError}.
+ *    valid, parseable IDL → throws {@link IdlDecodeError}.
  *  - **RPC/transport failure** — the underlying `getAccountInfo` rejects →
  *    that `SolanaError` propagates (classify it with `classifyRpcError`).
  *
  * On success returns the IDL account address plus the parsed JSON, so callers
- * don't re-`JSON.parse` the raw string or re-validate the Anchor shape
- * themselves. Use {@link fetchIdl} for the lenient, PMP-first flow.
+ * don't re-`JSON.parse` the raw string themselves. Use {@link fetchIdl} for the
+ * lenient, PMP-first flow.
  */
 export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): Promise<AnchorIdl | null> {
     const read = await readAnchorIdlAccount(rpc, programId);
@@ -153,10 +153,6 @@ export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): 
         parsed = JSON.parse(decoded.content);
     } catch (cause) {
         throw new IdlDecodeError('Decoded Anchor IDL is not valid JSON', { address, cause, reason: 'json' });
-    }
-
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { instructions?: unknown }).instructions)) {
-        throw new IdlDecodeError('Decoded Anchor IDL has unexpected shape', { address, reason: 'shape' });
     }
 
     return { address, idl: parsed };

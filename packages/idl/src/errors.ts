@@ -26,9 +26,7 @@ export type IdlDecodeReason =
     /** Framing matched but the zlib payload failed to inflate; `cause` holds the zlib error. */
     | 'inflate'
     /** Decompressed content is not valid JSON; `cause` holds the `SyntaxError`. */
-    | 'json'
-    /** Parsed JSON is not a recognisable IDL (e.g. missing an `instructions` array). */
-    | 'shape';
+    | 'json';
 
 /**
  * Thrown when an IDL account **exists on-chain but its bytes can't be turned
