@@ -53,7 +53,7 @@ type AnchorDecodeResult =
  * (which carries the original zlib error as `cause`). Callers that only need
  * "content or nothing" check `result.ok`.
  */
-async function decodeAnchorIdlAccount(raw: Uint8Array): Promise<AnchorDecodeResult> {
+async function decodeAnchorIdlAccountBytes(raw: Uint8Array): Promise<AnchorDecodeResult> {
     if (raw.length <= ANCHOR_ACCOUNT_HEADER_LEN) return { ok: false, reason: 'layout' };
 
     const dataLen = readU32LE(raw, ANCHOR_ACCOUNT_LEN_OFFSET);
@@ -87,8 +87,6 @@ function parseIdlJson(content: string): unknown {
     }
 }
 
-// ─── Live Anchor IDL ─────────────────────────────────────────────────────────
-
 /** Derive the IDL PDA, read it, and decode its bytes — or `null` if no such account exists. */
 async function readAnchorIdlAccount(
     rpc: SolanaRpcClient,
@@ -97,7 +95,7 @@ async function readAnchorIdlAccount(
     const address = await findAnchorIdlAddress(programId);
     const account = await fetchEncodedAccount(rpc, address);
     if (!account.exists) return null;
-    return { address, decoded: await decodeAnchorIdlAccount(account.data) };
+    return { address, decoded: await decodeAnchorIdlAccountBytes(account.data) };
 }
 
 /**
@@ -172,7 +170,7 @@ export async function fetchAnchorIdl(rpc: SolanaRpcClient, programId: Address): 
 export async function fetchAnchorIdlFromBuffer(rpc: SolanaRpcClient, bufferAddress: Address): Promise<string | null> {
     const account = await fetchEncodedAccount(rpc, bufferAddress);
     if (!account.exists) return null;
-    const decoded = await decodeAnchorIdlAccount(account.data);
+    const decoded = await decodeAnchorIdlAccountBytes(account.data);
     return decoded.ok ? decoded.content : null;
 }
 
@@ -196,7 +194,7 @@ export async function fetchIdlFromBuffer(rpc: SolanaRpcClient, bufferAddress: Ad
         return content === null ? null : { address: bufferAddress, content, type: 'pmp' };
     }
 
-    const decoded = await decodeAnchorIdlAccount(account.data);
+    const decoded = await decodeAnchorIdlAccountBytes(account.data);
     return decoded.ok ? { address: bufferAddress, content: decoded.content, type: 'anchor' } : null;
 }
 
