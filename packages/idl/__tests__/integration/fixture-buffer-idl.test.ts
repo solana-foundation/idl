@@ -48,21 +48,23 @@ describe.skipIf(bufferFixtures.length === 0)('fetchIdlFromBuffer (real on-chain 
         const rpc = makeFakeRpc(bucket);
         const result = await fetchIdlFromBuffer(rpc, address(addr));
 
-        expect(result).not.toBeNull();
-        expect(result!.type).toBe('pmp');
-        expect(result!.address).toBe(addr);
-        // Byte-for-byte equality: anything else means the round-trip
-        // (encode → zlib → on-chain bytes → fetch → unzlib → decode) lost
-        // or mutated content.
-        expect(result!.content).toBe(sourceIdl);
+        expect(result.status).toBe('ok');
+        if (result.status === 'ok') {
+            expect(result.source).toBe('pmp');
+            expect(result.address).toBe(addr);
+            // Byte-for-byte equality: anything else means the round-trip
+            // (encode → zlib → on-chain bytes → fetch → unzlib → decode) lost
+            // or mutated content.
+            expect(result.content).toBe(sourceIdl);
+        }
     });
 
     it.each(bufferFixtures)(
         'fetchPmpIdlFromBuffer agrees with fetchIdlFromBuffer for $address',
         async ({ address: addr, bucket, sourceIdl }) => {
             const rpc = makeFakeRpc(bucket);
-            const content = await fetchPmpIdlFromBuffer(rpc, address(addr));
-            expect(content).toBe(sourceIdl);
+            const result = await fetchPmpIdlFromBuffer(rpc, address(addr));
+            expect(result.status === 'ok' && result.content).toBe(sourceIdl);
         },
     );
 
@@ -70,11 +72,11 @@ describe.skipIf(bufferFixtures.length === 0)('fetchIdlFromBuffer (real on-chain 
         'Anchor decoder rejects the PMP-owned buffer for $address',
         async ({ address: addr, bucket }) => {
             const rpc = makeFakeRpc(bucket);
-            const content = await fetchAnchorIdlFromBuffer(rpc, address(addr));
+            const result = await fetchAnchorIdlFromBuffer(rpc, address(addr));
             // PMP buffer bytes don't satisfy the Anchor IdlAccount layout
             // (8-byte disc + 32-byte authority + u32 len + zlib blob), so the
-            // Anchor decoder should bail rather than return garbage.
-            expect(content).toBeNull();
+            // Anchor decoder should bail (corrupt) rather than return garbage.
+            expect(result.status).not.toBe('ok');
         },
     );
 
@@ -90,10 +92,11 @@ describe.skipIf(bufferFixtures.length === 0)('fetchIdlFromBuffer (real on-chain 
             // "one getAccountInfo call" contract — the same contract the
             // 0.1.2 PR review flagged when it was broken.
             const before = rpc.__stats().calls.length;
-            const content = account.exists ? decodePmpIdlFromBufferAccount(account) : null;
+            const decoded = account.exists ? decodePmpIdlFromBufferAccount(account) : { ok: false as const };
             const after = rpc.__stats().calls.length;
 
-            expect(content).toBe(sourceIdl);
+            expect(decoded.ok).toBe(true);
+            if (decoded.ok) expect(decoded.content).toBe(sourceIdl);
             expect(after).toBe(before);
         },
     );

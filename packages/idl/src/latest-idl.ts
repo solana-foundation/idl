@@ -21,11 +21,12 @@
  * was on chain. Callers that want a parsed view should use {@link fetchIdl}
  * (or the CLI's bare default mode).
  */
-import { findMetadataPda, type Seed } from '@solana-program/program-metadata';
+import type { Seed } from '@solana-program/program-metadata';
 import type { Address } from '@solana/kit';
 
 import { findAnchorIdlAddress } from './anchor.js';
-import { fetchAnchorIdl, type IdlSource } from './current-idl.js';
+import { fetchAnchorIdl } from './current-idl.js';
+import type { IdlSource } from './idl-result.js';
 import { fetchPmpIdl } from './pmp-idl.js';
 import type { SolanaRpcClient } from './rpc.js';
 
@@ -79,25 +80,23 @@ export async function fetchLatestIdls(
 ): Promise<LatestIdls> {
     const seed: Seed = options?.seed ?? 'idl';
 
-    const [pmpPdaFallback] = await findMetadataPda({
-        authority: options?.authority ?? null,
-        program: programId,
-        seed,
-    });
     const anchorAddr = await findAnchorIdlAddress(programId);
 
-    const [pmpResolved, anchor] = await Promise.all([
-        fetchPmpIdl(rpc, programId, seed, options?.authority),
+    // Both legs throw on RPC failure (every other outcome is a value), so a PMP
+    // outage now rejects this whole call rather than silently returning
+    // Anchor-only. A PMP *absent*/*corrupt* still resolves with Anchor.
+    const [pmpResult, anchorResult] = await Promise.all([
+        fetchPmpIdl(rpc, programId, { authority: options?.authority, seed }),
         fetchAnchorIdl(rpc, programId),
     ]);
 
-    const pmpMetadataAddress = pmpResolved?.address ?? pmpPdaFallback;
-
+    // Every `pmpResult` arm (ok / corrupt / absent) carries the resolved address
+    // — for `absent` it's the canonical PMP PDA, the old `pmpPdaFallback`.
     return {
-        anchor: anchor ? [buildVersion('anchor', anchor.content)] : [],
+        anchor: anchorResult.status === 'ok' ? [buildVersion('anchor', anchorResult.content)] : [],
         anchorAddress: anchorAddr,
-        pmp: pmpResolved ? [buildVersion('pmp', pmpResolved.content)] : [],
-        pmpAddress: pmpMetadataAddress,
+        pmp: pmpResult.status === 'ok' ? [buildVersion('pmp', pmpResult.content)] : [],
+        pmpAddress: pmpResult.address,
         programId,
     };
 }

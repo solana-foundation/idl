@@ -189,14 +189,14 @@ async function main(): Promise<void> {
 
     const recording = makeRecordingRpc(createSolanaRpc(rpcUrl), bucket, { reuseExisting: false });
     const decoded = await fetchIdlFromBuffer(recording, address(bufferAddress));
-    if (decoded === null) {
+    if (decoded.status !== 'ok') {
         throw new Error(
-            'fetchIdlFromBuffer returned null right after creating the buffer — ' +
+            `fetchIdlFromBuffer did not return an ok result right after creating the buffer (status=${decoded.status}) — ` +
                 'either the CLI did not actually finalize the buffer or the recording RPC is on a different cluster',
         );
     }
-    if (decoded.type !== 'pmp') {
-        throw new Error(`expected decoded.type === 'pmp', got ${decoded.type}`);
+    if (decoded.source !== 'pmp') {
+        throw new Error(`expected decoded.source === 'pmp', got ${decoded.source}`);
     }
     if (decoded.content !== idlContent) {
         throw new Error('round-trip mismatch: decoded content does not equal the IDL we just wrote');

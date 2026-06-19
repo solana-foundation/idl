@@ -23,7 +23,7 @@ import type { Address } from '@solana/kit';
 import { address, createSolanaRpc } from '@solana/kit';
 
 import { findAnchorIdlAddress, reconstructAnchorHistory } from '../../src/anchor.js';
-import { fetchAnchorIdl, fetchIdl } from '../../src/current-idl.js';
+import { fetchAnchorIdl, fetchIdlWrapped } from '../../src/current-idl.js';
 import { fetchLatestIdls } from '../../src/latest-idl.js';
 import { buildPmpIdlLookups, fetchPmpIdl } from '../../src/pmp-idl.js';
 import { reconstructPmpHistory } from '../../src/program-metadata.js';
@@ -97,8 +97,8 @@ async function recordProgram(programId: Address, cluster: Cluster): Promise<void
     console.log(`  rpc:    ${url.replace(/\/[a-f0-9-]{20,}\/?$/i, '/<redacted>')}`);
 
     console.log('  · current IDL (PMP canonical → fndn fallback → Anchor)');
-    const current = await fetchIdl(rpc, programId);
-    console.log(`    → ${current ? `${current.type}` : 'none'}`);
+    const current = await fetchIdlWrapped(rpc, programId);
+    console.log(`    → ${current.status === 'ok' ? current.source : current.status}`);
 
     console.log('  · PMP history (canonical + fndn fallback)');
     const lookups = await buildPmpIdlLookups(programId, 'idl');
@@ -112,7 +112,7 @@ async function recordProgram(programId: Address, cluster: Cluster): Promise<void
 
     console.log('  · Anchor current (account fetch)');
     const anchorCurrent = await fetchAnchorIdl(rpc, programId);
-    console.log(`    → ${anchorCurrent ? 'present' : 'none'}`);
+    console.log(`    → ${anchorCurrent.status === 'ok' ? 'present' : anchorCurrent.status}`);
 
     console.log('  · Latest side-by-side (PMP + Anchor + last-write slot)');
     const latest = await fetchLatestIdls(rpc, programId);
@@ -129,7 +129,7 @@ async function recordProgram(programId: Address, cluster: Cluster): Promise<void
 
     // Also force a final PMP resolve to be sure we have the fixtures the
     // production code paths need when only the resolver is called.
-    await fetchPmpIdl(rpc, programId, 'idl');
+    await fetchPmpIdl(rpc, programId, { seed: 'idl' });
 
     console.log(`  ✓ done. ${total} RPC calls (${reused} reused from disk)`);
 }

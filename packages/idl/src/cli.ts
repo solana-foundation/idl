@@ -20,7 +20,8 @@ const PKG_VERSION: string = (() => {
 })();
 
 import { findAnchorIdlAddress, reconstructAnchorHistory } from './anchor.js';
-import { fetchIdl, fetchIdlFromBuffer } from './current-idl.js';
+import { fetchIdlFromBuffer, fetchIdlWrapped } from './current-idl.js';
+import { parseIdl } from './idl-result.js';
 import { fetchLatestIdls } from './latest-idl.js';
 import { buildPmpIdlLookups } from './pmp-idl.js';
 import {
@@ -467,10 +468,18 @@ export function buildProgram(options: RunCliOptions = {}): Command {
             // ─── --buffer (decode raw buffer account) ──────────────────────────────
             if (opts.buffer) {
                 const result = await fetchIdlFromBuffer(rpc, addr);
-                if (!result) {
+                if (result.status === 'absent') {
                     console.error(
                         pc.red(
                             'No IDL found at this address (not a PMP buffer, not an Anchor IdlAccount, or account does not exist).',
+                        ),
+                    );
+                    process.exit(1);
+                }
+                if (result.status === 'corrupt') {
+                    console.error(
+                        pc.red(
+                            `IDL buffer present but its bytes could not be decoded (${result.source}, ${result.reason}).`,
                         ),
                     );
                     process.exit(1);
@@ -503,22 +512,26 @@ export function buildProgram(options: RunCliOptions = {}): Command {
 
             // ─── Default: bare IDL ─────────────────────────────────────────────────
             if (!opts.history) {
-                const result = await fetchIdl(rpc, addr, {
+                const result = await fetchIdlWrapped(rpc, addr, {
                     seed,
                     ...(authority !== undefined ? { authority } : {}),
                 });
-                if (!result) {
+                if (result.status === 'absent') {
                     console.error(pc.red('No IDL found for this program (checked PMP and Anchor).'));
                     process.exit(1);
                 }
-
-                // Bare IDL: emit object as pretty JSON, or pass through a non-JSON
-                // string IDL unchanged (so pipes get exactly what was uploaded).
-                if (typeof result.idl === 'string') {
-                    console.log(result.idl);
-                } else {
-                    console.log(JSON.stringify(result.idl, null, 2));
+                if (result.status === 'corrupt') {
+                    console.error(
+                        pc.red(`IDL present but its bytes could not be decoded (${result.source}, ${result.reason}).`),
+                    );
+                    process.exit(1);
                 }
+
+                // Bare IDL: emit the parsed object as pretty JSON, or pass a
+                // non-JSON string IDL through unchanged (so pipes get exactly
+                // what was uploaded).
+                const parsed = parseIdl(result.content);
+                console.log(parsed.ok ? JSON.stringify(parsed.idl, null, 2) : result.content);
                 return;
             }
 

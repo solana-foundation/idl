@@ -101,15 +101,17 @@ describe('CLI ↔ library equivalence on BUYux', () => {
             expect(parsed).toHaveProperty('instructions');
         });
 
-        it('matches the .idl field of the library result byte-for-byte', async () => {
+        it('matches the library result byte-for-byte', async () => {
+            // fetchIdl now returns the parsed IDL object itself (T | null),
+            // not a { programId, type, idl } wrapper.
             const libResult = await fetchIdl(makeFakeRpc(BUCKET), BUYUX);
             expect(libResult).not.toBeNull();
 
             const { stdout } = await runCliCaptured([BUYUX, '--rpc', 'http://mocked.invalid/']);
 
             // For BUYux the IDL parses as JSON, so the CLI prints
-            // JSON.stringify(libResult.idl, null, 2).
-            expect(stdout).toBe(JSON.stringify(libResult!.idl, null, 2));
+            // JSON.stringify(libResult, null, 2).
+            expect(stdout).toBe(JSON.stringify(libResult, null, 2));
         });
 
         it('matches the pinned bare-IDL snapshot', async () => {

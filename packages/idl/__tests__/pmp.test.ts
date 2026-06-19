@@ -1,5 +1,5 @@
 import { address, isAddress } from '@solana/kit';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import { buildPmpIdlLookups, fetchPmpIdl, IDL_FALLBACK_PMP_AUTHORITIES } from '../src/pmp-idl.js';
 import {
@@ -79,9 +79,36 @@ describe('PMP constants', () => {
 });
 
 describe('fetchPmpIdl', () => {
-    test('returns null when no lookup yields content', async () => {
-        const stubRpc = {} as SolanaRpcClient;
-        const out = await fetchPmpIdl(stubRpc, PROGRAM, 'idl', null);
-        expect(out).toBeNull();
+    test('returns absent when no metadata account exists for any lookup', async () => {
+        // Every getAccountInfo resolves to a missing account, so each lookup's
+        // fetchMetadataContent throws ACCOUNT_NOT_FOUND — classified as absent,
+        // never propagated.
+        const getAccountInfo = vi.fn(() => ({ send: () => Promise.resolve({ value: null }) }));
+        const rpc = { getAccountInfo } as unknown as SolanaRpcClient;
+        const out = await fetchPmpIdl(rpc, PROGRAM, { authority: null, seed: 'idl' });
+        // absent carries the canonical PMP PDA (the place the IDL would live).
+        const canonical = await findPmpMetadataAddress(PROGRAM, 'idl', null);
+        expect(out).toEqual({ address: canonical, status: 'absent' });
+    });
+
+    test('reports corrupt (NOT a thrown RPC error) for a present-but-undecodable metadata account', async () => {
+        // The account exists but its bytes aren't a valid metadata account, so
+        // fetchMetadataContent → decodeMetadata throws FAILED_TO_DECODE_ACCOUNT —
+        // a SolanaError. The classification must surface that as corrupt(framing),
+        // NOT propagate it as if the RPC call had failed (the "throws iff RPC
+        // fails" soft spot).
+        const value = {
+            data: [Buffer.alloc(8).toString('base64'), 'base64'],
+            executable: false,
+            lamports: 1,
+            owner: PROGRAM_METADATA_PROGRAM_ADDRESS,
+            rentEpoch: 0,
+            space: 8,
+        };
+        const getAccountInfo = vi.fn(() => ({ send: () => Promise.resolve({ value }) }));
+        const rpc = { getAccountInfo } as unknown as SolanaRpcClient;
+
+        const out = await fetchPmpIdl(rpc, PROGRAM, { authority: null, seed: 'idl' });
+        expect(out).toMatchObject({ reason: 'framing', source: 'pmp', status: 'corrupt' });
     });
 });

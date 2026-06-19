@@ -81,36 +81,46 @@ function mockRpc(
 // ─── fetchAnchorIdlFromBuffer ────────────────────────────────────────────────
 
 describe('fetchAnchorIdlFromBuffer', () => {
-    test('decodes a valid Anchor IDL buffer', async () => {
+    test('decodes a valid Anchor IDL buffer (ok)', async () => {
         const idl = JSON.stringify({ name: 'staged', version: '0.1.0' });
         const { rpc } = mockRpc({ data: buildAnchorAccountBytes(idl), owner: SOME_PROGRAM });
         const out = await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER);
-        expect(out).toBe(idl);
+        expect(out.status === 'ok' && out.content).toBe(idl);
+        if (out.status === 'ok') expect(out.source).toBe('anchor');
     });
 
-    test('returns null when the account does not exist', async () => {
+    test('returns absent when the account does not exist', async () => {
         const { rpc } = mockRpc(null);
-        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toEqual({ address: SOME_BUFFER, status: 'absent' });
     });
 
-    test('returns null for an account shorter than the IdlAccount header', async () => {
+    test('returns corrupt(framing) for an account shorter than the IdlAccount header', async () => {
         const { rpc } = mockRpc({ data: Buffer.alloc(10), owner: SOME_PROGRAM });
-        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toMatchObject({
+            reason: 'framing',
+            status: 'corrupt',
+        });
     });
 
-    test('returns null when the length field overruns the account', async () => {
+    test('returns corrupt(framing) when the length field overruns the account', async () => {
         const buf = Buffer.alloc(50);
         buf.writeUInt32LE(9999, 40); // claims more data than exists
         const { rpc } = mockRpc({ data: buf, owner: SOME_PROGRAM });
-        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toMatchObject({
+            reason: 'framing',
+            status: 'corrupt',
+        });
     });
 
-    test('returns null when the data region is not valid zlib', async () => {
+    test('returns corrupt(payload) when the data region is not valid zlib', async () => {
         const buf = Buffer.alloc(48);
         buf.writeUInt32LE(4, 40);
         Buffer.from([0xff, 0xff, 0xff, 0xff]).copy(buf, 44);
         const { rpc } = mockRpc({ data: buf, owner: SOME_PROGRAM });
-        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchAnchorIdlFromBuffer(rpc, SOME_BUFFER)).toMatchObject({
+            reason: 'payload',
+            status: 'corrupt',
+        });
     });
 });
 
@@ -123,29 +133,30 @@ describe('fetchPmpIdlFromBuffer', () => {
         const accountBytes = buildPmpBufferAccountBytes(new Uint8Array(packed.data));
         const { rpc } = mockRpc({ data: Buffer.from(accountBytes), owner: PROGRAM_METADATA_PROGRAM_ADDRESS });
         const out = await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER);
-        expect(out).toBe(idl);
+        expect(out.status === 'ok' && out.content).toBe(idl);
+        if (out.status === 'ok') expect(out.source).toBe('pmp');
     });
 
-    test('returns null when the account does not exist', async () => {
+    test('returns absent when the account does not exist', async () => {
         const { rpc } = mockRpc(null);
-        expect(await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).toEqual({ address: SOME_BUFFER, status: 'absent' });
     });
 
-    test('returns null when the buffer is empty', async () => {
+    test('returns corrupt(payload) when the buffer is empty', async () => {
         const accountBytes = buildPmpBufferAccountBytes(new Uint8Array(0));
         const { rpc } = mockRpc({ data: Buffer.from(accountBytes), owner: PROGRAM_METADATA_PROGRAM_ADDRESS });
-        expect(await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).toMatchObject({ reason: 'payload', status: 'corrupt' });
     });
 
-    test('returns null when no candidate decoding produces a valid string', async () => {
-        // Random bytes that are not valid zlib/gzip nor decodable as UTF-8.
+    test('decodes 0xff bytes as a (useless) UTF-8 string rather than failing', async () => {
+        // Random bytes that are not valid zlib/gzip. Plain UTF-8 of 0xff bytes
+        // is a replacement-character string (non-empty), so the {None, Utf8}
+        // fallback yields `ok` content — just not anything useful. The helper
+        // is best-effort by design; we only assert it doesn't throw / is `ok`.
         const randomData = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         const accountBytes = buildPmpBufferAccountBytes(randomData);
         const { rpc } = mockRpc({ data: Buffer.from(accountBytes), owner: PROGRAM_METADATA_PROGRAM_ADDRESS });
-        // Plain UTF-8 of 0xff bytes is a replacement-character string (non-null),
-        // so by default this DOES decode to something — just not anything useful.
-        // The helper is best-effort by design; we only assert it doesn't throw.
-        await expect(fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).resolves.not.toThrow();
+        expect((await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER)).status).toBe('ok');
     });
 
     test('honours an explicit (no-compression, utf8) format override', async () => {
@@ -157,10 +168,9 @@ describe('fetchPmpIdlFromBuffer', () => {
         const accountBytes = buildPmpBufferAccountBytes(Buffer.from(idl, 'utf8'));
         const { rpc } = mockRpc({ data: Buffer.from(accountBytes), owner: PROGRAM_METADATA_PROGRAM_ADDRESS });
         const out = await fetchPmpIdlFromBuffer(rpc, SOME_BUFFER, {
-            compression: Compression.None,
-            encoding: Encoding.Utf8,
+            format: { compression: Compression.None, encoding: Encoding.Utf8 },
         });
-        expect(out).toBe(idl);
+        expect(out.status === 'ok' && out.content).toBe(idl);
     });
 });
 
@@ -171,10 +181,12 @@ describe('fetchIdlFromBuffer', () => {
         const idl = JSON.stringify({ name: 'anchor-staged' });
         const { rpc, getAccountInfo } = mockRpc({ data: buildAnchorAccountBytes(idl), owner: SOME_PROGRAM });
         const out = await fetchIdlFromBuffer(rpc, SOME_BUFFER);
-        expect(out).not.toBeNull();
-        expect(out!.type).toBe('anchor');
-        expect(out!.content).toBe(idl);
-        expect(out!.address).toBe(SOME_BUFFER);
+        expect(out.status).toBe('ok');
+        if (out.status === 'ok') {
+            expect(out.source).toBe('anchor');
+            expect(out.content).toBe(idl);
+            expect(out.address).toBe(SOME_BUFFER);
+        }
         expect(getAccountInfo).toHaveBeenCalledTimes(1);
     });
 
@@ -187,9 +199,11 @@ describe('fetchIdlFromBuffer', () => {
             owner: PROGRAM_METADATA_PROGRAM_ADDRESS,
         });
         const out = await fetchIdlFromBuffer(rpc, SOME_BUFFER);
-        expect(out).not.toBeNull();
-        expect(out!.type).toBe('pmp');
-        expect(out!.content).toBe(idl);
+        expect(out.status).toBe('ok');
+        if (out.status === 'ok') {
+            expect(out.source).toBe('pmp');
+            expect(out.content).toBe(idl);
+        }
         // Regression: prior to 0.1.2 this path issued two getAccountInfo calls
         // because fetchIdlFromBuffer delegated to fetchPmpIdlFromBuffer, which
         // re-fetched the same account via fetchMaybeBuffer. The contract now
@@ -197,13 +211,14 @@ describe('fetchIdlFromBuffer', () => {
         expect(getAccountInfo).toHaveBeenCalledTimes(1);
     });
 
-    test('returns null when the account does not exist', async () => {
+    test('returns absent when the account does not exist', async () => {
         const { rpc } = mockRpc(null);
-        expect(await fetchIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        expect(await fetchIdlFromBuffer(rpc, SOME_BUFFER)).toEqual({ address: SOME_BUFFER, status: 'absent' });
     });
 
-    test('returns null when the account is owned by a program but its bytes are not an IdlAccount', async () => {
+    test('returns corrupt when the account is owned by a program but its bytes are not an IdlAccount', async () => {
         const { rpc } = mockRpc({ data: Buffer.alloc(10), owner: ZERO_AUTHORITY });
-        expect(await fetchIdlFromBuffer(rpc, SOME_BUFFER)).toBeNull();
+        const out = await fetchIdlFromBuffer(rpc, SOME_BUFFER);
+        expect(out).toMatchObject({ source: 'anchor', status: 'corrupt' });
     });
 });

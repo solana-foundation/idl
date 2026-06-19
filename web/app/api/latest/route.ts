@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchLatestIdls } from '@solana/idl';
+import { fetchLatestIdls, parseIdl } from '@solana/idl';
 import {
   envVarForCluster,
   parseCluster,
@@ -39,7 +39,19 @@ export async function GET(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const result = await fetchLatestIdls(rpc, programId as Address);
 
-    return NextResponse.json(result);
+    // Annotate each entry with JSON validity so the UI can flag a present-but-
+    // broken IDL. `content` stays byte-exact; parseIdl is the same check /api/idl
+    // uses, imported from the package rather than reimplemented.
+    const withValidity = (v: (typeof result.pmp)[number]) => {
+      const parsed = parseIdl(v.content);
+      return { ...v, reason: parsed.ok ? undefined : parsed.reason, valid: parsed.ok };
+    };
+
+    return NextResponse.json({
+      ...result,
+      anchor: result.anchor.map(withValidity),
+      pmp: result.pmp.map(withValidity),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

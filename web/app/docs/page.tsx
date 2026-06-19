@@ -308,6 +308,10 @@ curl -X POST "${BASE}/api/history" \\
                 either source
               </li>
               <li>
+                <Inline>422</Inline> — (<Inline>/api/idl</Inline> only) an IDL account is present
+                but its bytes can&apos;t be decoded
+              </li>
+              <li>
                 <Inline>500</Inline> — server-side RPC failure or missing{' '}
                 <Inline>RPC_MAINNET</Inline> / <Inline>RPC_DEVNET</Inline> env on the deployment
               </li>

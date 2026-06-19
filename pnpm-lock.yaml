@@ -68,8 +68,8 @@ importers:
         specifier: ^0.5.1
         version: 0.5.1(@solana/kit@6.9.0(typescript@5.9.3))
       '@solana/idl':
-        specifier: ^0.1.1
-        version: 0.1.1(@solana/kit@6.9.0(typescript@5.9.3))
+        specifier: workspace:*
+        version: link:../packages/idl
       '@solana/kit':
         specifier: ^6.0.0
         version: 6.9.0(typescript@5.9.3)
@@ -1329,13 +1329,6 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
-
-  '@solana/idl@0.1.1':
-    resolution: {integrity: sha512-VMDq437gdMzolNfA1GnAPiBFjks7FKhu7RbAgoBxzyner636/e1BBtc4/2PywiE197mXanepJj0BBg4HoYjVLw==}
-    engines: {node: '>=20'}
-    hasBin: true
-    peerDependencies:
-      '@solana/kit': ^6.0.0
 
   '@solana/instruction-plans@6.9.0':
     resolution: {integrity: sha512-SxTSOetEKD+WPzvDuYRsP1+KkwUp8KqL1n7oFx9ThxjyfEY0ly0i9KdbvX5yYVDOA2TSwrltgdu14y/Pf6y3Cg==}
@@ -3147,13 +3140,6 @@ snapshots:
   '@solana/functional@6.9.0(typescript@5.9.3)':
     optionalDependencies:
       typescript: 5.9.3
-
-  '@solana/idl@0.1.1(@solana/kit@6.9.0(typescript@5.9.3))':
-    dependencies:
-      '@solana-program/program-metadata': 0.5.1(@solana/kit@6.9.0(typescript@5.9.3))
-      '@solana/kit': 6.9.0(typescript@5.9.3)
-      commander: 13.1.0
-      picocolors: 1.1.1
 
   '@solana/instruction-plans@6.9.0(typescript@5.9.3)':
     dependencies:

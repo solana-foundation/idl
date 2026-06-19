@@ -7,8 +7,15 @@ import {
     type Seed,
 } from '@solana-program/program-metadata';
 import type { Address, EncodedAccount } from '@solana/kit';
-import { fetchEncodedAccount } from '@solana/kit';
+import {
+    fetchEncodedAccount,
+    isSolanaError,
+    SOLANA_ERROR__ACCOUNTS__ACCOUNT_NOT_FOUND,
+    SOLANA_ERROR__ACCOUNTS__FAILED_TO_DECODE_ACCOUNT,
+} from '@solana/kit';
 
+import type { IdlDecodeReason } from './errors.js';
+import type { IdlResult, PmpIdlResult } from './idl-result.js';
 import { findPmpMetadataAddress } from './program-metadata.js';
 import type { SolanaRpcClient } from './rpc.js';
 
@@ -25,12 +32,6 @@ export const IDL_FALLBACK_PMP_AUTHORITIES: readonly Address[] = [
 export type PmpIdlLookup = {
     authority: Address | null;
     address: Address;
-};
-
-export type PmpIdl = {
-    content: string;
-    address: Address;
-    authority: Address | null;
 };
 
 /**
@@ -66,49 +67,96 @@ export async function buildPmpIdlLookups(
     return lookups;
 }
 
-async function tryFetchPmpContent(
+/**
+ * Per-lookup data outcome from {@link fetchMetadataContent}, with genuine RPC
+ * failure separated out so it can propagate. `fetchMetadataContent` bundles
+ * fetch + decode behind one throwing interface, so we classify its throws into
+ * data outcomes vs. real RPC failures:
+ *  - `ACCOUNT_NOT_FOUND` (and empty content) → `absent` — no IDL published here;
+ *  - `FAILED_TO_DECODE_ACCOUNT` → `corrupt` (`'framing'`) — the account exists
+ *    but its bytes aren't a valid metadata account;
+ *  - a non-`SolanaError` throw → `corrupt` (`'payload'`) — the metadata decoded
+ *    but its content couldn't be decompressed/decoded;
+ *  - any *other* `SolanaError` → a genuine RPC/transport failure, **re-thrown**
+ *    so it surfaces to the caller (the only throw the public API makes).
+ *
+ * Without the `FAILED_TO_DECODE_ACCOUNT` branch a present-but-undecodable
+ * metadata account would propagate as if the RPC had failed — the soft spot
+ * this classification closes.
+ */
+type PmpContentOutcome =
+    | { status: 'ok'; content: string }
+    | { status: 'absent' }
+    | { status: 'corrupt'; reason: IdlDecodeReason; cause: unknown };
+
+async function fetchPmpContent(
     rpc: SolanaRpcClient,
     programId: Address,
     seed: Seed,
     authority: Address | null,
-): Promise<string | null> {
+): Promise<PmpContentOutcome> {
     try {
         const content = await fetchMetadataContent(rpc, programId, seed, authority);
-        return content || null;
-    } catch {
-        return null;
+        return content ? { content, status: 'ok' } : { status: 'absent' };
+    } catch (err) {
+        if (isSolanaError(err, SOLANA_ERROR__ACCOUNTS__ACCOUNT_NOT_FOUND)) return { status: 'absent' };
+        if (isSolanaError(err, SOLANA_ERROR__ACCOUNTS__FAILED_TO_DECODE_ACCOUNT)) {
+            return { cause: err, reason: 'framing', status: 'corrupt' };
+        }
+        if (isSolanaError(err)) throw err;
+        return { cause: err, reason: 'payload', status: 'corrupt' };
     }
 }
 
 /**
  * Resolve the live PMP IDL for `programId`. Tries canonical first, then each
- * fndn / fallback authority in {@link IDL_FALLBACK_PMP_AUTHORITIES}. Returns
- * `null` if no PMP metadata is published.
+ * fndn / fallback authority in {@link IDL_FALLBACK_PMP_AUTHORITIES}.
  *
- * Returns the raw on-chain content as a string (NOT parsed JSON) so callers
- * that need byte-exact preservation (hashing, diffing) get it. To get a parsed
- * IDL with Anchor fallback, use {@link fetchIdl} instead.
+ * Returns a {@link PmpIdlResult}: `ok` (with the matched `authority` and the
+ * raw on-chain `content` — NOT parsed JSON, so byte-exact consumers get it),
+ * `corrupt` (a metadata account exists but its bytes don't decode), or
+ * `absent` (no PMP metadata published under any lookup). The first `ok` wins;
+ * a `corrupt` is only reported if no later lookup yields `ok`.
+ *
+ * **Throws only on RPC failure.** A transport/server error from the RPC
+ * propagates (classify it with `classifyRpcError`); every data outcome is a
+ * value. To get a parsed IDL with Anchor fallback, use {@link fetchIdl}.
  */
 export async function fetchPmpIdl(
     rpc: SolanaRpcClient,
     programId: Address,
-    seed: Seed = 'idl',
-    explicitAuthority?: Address | null,
-): Promise<PmpIdl | null> {
-    const lookups = await buildPmpIdlLookups(programId, seed, explicitAuthority);
+    options?: { seed?: Seed; authority?: Address | null },
+): Promise<PmpIdlResult> {
+    const seed: Seed = options?.seed ?? 'idl';
+    const lookups = await buildPmpIdlLookups(programId, seed, options?.authority);
 
+    let corrupt: PmpIdlResult | null = null;
     for (const lookup of lookups) {
-        const content = await tryFetchPmpContent(rpc, programId, seed, lookup.authority);
-        if (content) {
+        const outcome = await fetchPmpContent(rpc, programId, seed, lookup.authority);
+        if (outcome.status === 'ok') {
             return {
                 address: lookup.address,
                 authority: lookup.authority,
-                content,
+                content: outcome.content,
+                source: 'pmp',
+                status: 'ok',
+            };
+        }
+        if (outcome.status === 'corrupt' && !corrupt) {
+            corrupt = {
+                address: lookup.address,
+                authority: lookup.authority,
+                cause: outcome.cause,
+                reason: outcome.reason,
+                source: 'pmp',
+                status: 'corrupt',
             };
         }
     }
 
-    return null;
+    // Nothing found under any lookup: report `absent` at the canonical address
+    // (lookups[0]) — the primary place the IDL would live.
+    return corrupt ?? { address: lookups[0]!.address, status: 'absent' };
 }
 
 /**
@@ -141,38 +189,50 @@ const DEFAULT_PMP_DECODE_CANDIDATES: readonly PmpDecodeFormat[] = [
 ];
 
 /**
- * Pure decoder for an already-fetched PMP `Buffer` account. Returns the
- * decoded content string, or `null` if the bytes don't parse as a Buffer or
- * none of the candidate decodings yield a non-empty string.
+ * Discriminated outcome of decoding an already-fetched PMP `Buffer` account:
+ * `ok` with the content, or a byte-level failure — `'framing'` (the bytes don't
+ * parse as a `Buffer` account, with the decode error as `cause`) or `'payload'`
+ * (parsed as a Buffer, but it's empty or no candidate (de)compression yields a
+ * non-empty string).
+ */
+export type PmpBufferDecodeResult =
+    | { ok: true; content: string }
+    | { ok: false; reason: IdlDecodeReason; cause?: unknown };
+
+/**
+ * Pure decoder for an already-fetched PMP `Buffer` account.
  *
  * Exposed within the package so callers that already hold the encoded
  * account (e.g. {@link fetchIdlFromBuffer}) can avoid a second RPC round
  * trip. The public {@link fetchPmpIdlFromBuffer} is the one-stop entry that
  * does the fetch + decode.
  */
-export function decodePmpIdlFromBufferAccount(account: EncodedAccount, format?: PmpDecodeFormat): string | null {
+export function decodePmpIdlFromBufferAccount(
+    account: EncodedAccount,
+    format?: PmpDecodeFormat,
+): PmpBufferDecodeResult {
     let decoded;
     try {
         decoded = decodeBuffer(account);
-    } catch {
-        return null;
+    } catch (cause) {
+        return { cause, ok: false, reason: 'framing' };
     }
 
     const data = decoded.data.data;
-    if (data.length === 0) return null;
+    if (data.length === 0) return { ok: false, reason: 'payload' };
 
     const candidates = format ? [format] : DEFAULT_PMP_DECODE_CANDIDATES;
 
     for (const { encoding, compression } of candidates) {
         try {
             const content = unpackDirectData({ compression, data, encoding });
-            if (content.length > 0) return content;
+            if (content.length > 0) return { content, ok: true };
         } catch {
             // Try the next candidate
         }
     }
 
-    return null;
+    return { ok: false, reason: 'payload' };
 }
 
 /**
@@ -183,17 +243,22 @@ export function decodePmpIdlFromBufferAccount(account: EncodedAccount, format?: 
  * {@link packDirectData} defaults), so this helper tries that first and
  * falls back to gzip and plain UTF-8.
  *
- * Pass `format` (both `encoding` AND `compression` required together) to
- * force a specific decoding when working with non-IDL buffers. Returns
- * `null` if the account doesn't exist, isn't a PMP buffer, or none of the
- * candidate decodings yield a non-empty string.
+ * Pass `options.format` (both `encoding` AND `compression` required together)
+ * to force a specific decoding when working with non-IDL buffers. Returns a
+ * buffer {@link IdlResult} (no resolution `authority`): `absent` if the account
+ * doesn't exist, `corrupt` if it exists but isn't a decodable PMP buffer, or
+ * `ok` with the decoded content. Throws only on RPC failure.
  */
 export async function fetchPmpIdlFromBuffer(
     rpc: SolanaRpcClient,
     bufferAddress: Address,
-    format?: PmpDecodeFormat,
-): Promise<string | null> {
+    options?: { format?: PmpDecodeFormat },
+): Promise<IdlResult<'pmp'>> {
     const account = await fetchEncodedAccount(rpc, bufferAddress);
-    if (!account.exists) return null;
-    return decodePmpIdlFromBufferAccount(account, format);
+    if (!account.exists) return { address: bufferAddress, status: 'absent' };
+
+    const decoded = decodePmpIdlFromBufferAccount(account, options?.format);
+    return decoded.ok
+        ? { address: bufferAddress, content: decoded.content, source: 'pmp', status: 'ok' }
+        : { address: bufferAddress, cause: decoded.cause, reason: decoded.reason, source: 'pmp', status: 'corrupt' };
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Address, createSolanaRpc } from '@solana/kit';
-import { fetchIdl } from '@solana/idl';
+import { fetchIdlWrapped, parseIdl } from '@solana/idl';
 import {
   envVarForCluster,
   parseCluster,
@@ -36,16 +36,34 @@ export async function GET(req: NextRequest) {
     const rpc = createSolanaRpc(rpcUrl);
     const addr = programId as Address;
 
-    const result = await fetchIdl(rpc, addr, { seed: 'idl' });
+    const result = await fetchIdlWrapped(rpc, addr, { seed: 'idl' });
 
-    if (!result) {
+    if (result.status === 'absent') {
       return NextResponse.json(
         { error: 'No IDL found for this program (checked PMP and Anchor)' },
         { status: 404 },
       );
     }
 
-    return NextResponse.json(result);
+    if (result.status === 'corrupt') {
+      return NextResponse.json(
+        { error: 'IDL account present but its bytes could not be decoded', reason: result.reason, source: result.source },
+        { status: 422 },
+      );
+    }
+
+    // ok: parse to an object when it's JSON, otherwise pass the raw on-chain
+    // string through as `idl` (opaque / broken-JSON content stays byte-exact).
+    // `valid` + `reason` let the UI flag content that isn't a usable IDL while
+    // still showing it.
+    const parsed = parseIdl(result.content);
+    return NextResponse.json({
+      idl: parsed.ok ? parsed.idl : result.content,
+      programId: addr,
+      reason: parsed.ok ? undefined : parsed.reason,
+      type: result.source,
+      valid: parsed.ok,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
