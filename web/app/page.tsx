@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { isAddress } from '@solana/kit';
 import Link from 'next/link';
 
 type SearchMode = 'current' | 'latest' | 'history' | 'security';
@@ -18,10 +19,18 @@ const CLUSTER_IDS: readonly Cluster[] = CLUSTERS.map((c) => c.id);
 
 /**
  * Read the persisted query state from the URL — kept tiny and synchronous
- * so the page can rehydrate from a shared link on mount without flashing
- * the empty form first. Falls back to defaults for missing/invalid params.
+ * so the page can rehydrate from a shared link on mount. Reading from
+ * `window.location` is deferred to a `useEffect` to avoid an SSR/hydration
+ * mismatch (the server has no URL params). Falls back to defaults for
+ * missing/invalid params; `programId` is only accepted as the auto-search
+ * trigger when it's a valid base58 address (see {@link isAddress}).
  */
-function readQueryState(search: string): { programId: string; mode: SearchMode; cluster: Cluster } {
+function readQueryState(search: string): {
+  programId: string;
+  programIdValid: boolean;
+  mode: SearchMode;
+  cluster: Cluster;
+} {
   const params = new URLSearchParams(search);
   const programId = params.get('programId')?.trim() ?? '';
   const modeRaw = params.get('mode');
@@ -30,6 +39,7 @@ function readQueryState(search: string): { programId: string; mode: SearchMode; 
     cluster: (CLUSTER_IDS as readonly string[]).includes(clusterRaw ?? '') ? (clusterRaw as Cluster) : 'mainnet-beta',
     mode: (SEARCH_MODES as readonly string[]).includes(modeRaw ?? '') ? (modeRaw as SearchMode) : 'current',
     programId,
+    programIdValid: programId !== '' && isAddress(programId),
   };
 }
 
@@ -644,6 +654,17 @@ export default function Home() {
   const [securityData, setSecurityData] = useState<SecurityTxtResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Latest committed query inputs, mirrored into refs so `search` can read the
+  // current values without closing over them — that keeps `search` a *stable*
+  // callback, so the mount effect can depend on it honestly (no
+  // exhaustive-deps suppression) and never risks a stale closure.
+  const programIdRef = useRef(programId);
+  const modeRef = useRef(mode);
+  const clusterRef = useRef(cluster);
+  programIdRef.current = programId;
+  modeRef.current = mode;
+  clusterRef.current = cluster;
+
   const clearResults = useCallback(() => {
     setCurrentData(null);
     setLatestData(null);
@@ -653,15 +674,17 @@ export default function Home() {
   }, []);
 
   /**
-   * Run a search. Overrides let the mount effect kick off a search with the
-   * URL-derived values before React has committed the corresponding state —
-   * without them we'd race against `setProgramId` and call with `''`.
+   * Run a search. Reads the current query inputs from refs (not closed-over
+   * state), so this callback is stable across renders. Overrides let the mount
+   * effect kick off a search with URL-derived values before React has committed
+   * the corresponding state — without them we'd race against `setProgramId` and
+   * read the still-empty ref.
    */
   const search = useCallback(
     async (overrides?: { id?: string; mode?: SearchMode; cluster?: Cluster }) => {
-      const id = (overrides?.id ?? programId).trim();
-      const m = overrides?.mode ?? mode;
-      const c = overrides?.cluster ?? cluster;
+      const id = (overrides?.id ?? programIdRef.current).trim();
+      const m = overrides?.mode ?? modeRef.current;
+      const c = overrides?.cluster ?? clusterRef.current;
       if (!id) return;
 
       writeQueryState({ cluster: c, mode: m, programId: id });
@@ -718,27 +741,31 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [programId, mode, cluster, clearResults],
+    [clearResults],
   );
 
   // Rehydrate from URL on mount: `/?programId=...&mode=...&cluster=...` lets
-  // users share a deep link that lands directly on results. We pass values
-  // explicitly to `search` because the `setState` calls below won't be
-  // visible inside this effect's `search` closure.
+  // users share a deep link that lands directly on results. `search` is stable
+  // (it reads inputs from refs), so depending on it here is honest and the
+  // effect still runs once. We pass values explicitly because the `setState`
+  // calls below haven't committed to the refs yet when `search` runs. The
+  // auto-search only fires for a syntactically valid address, so a malformed
+  // `?programId=…` populates the input but doesn't hit the API.
+  const didRehydrate = useRef(false);
   useEffect(() => {
+    if (didRehydrate.current) return;
+    didRehydrate.current = true;
+
     const initial = readQueryState(window.location.search);
     if (!initial.programId && initial.mode === 'current' && initial.cluster === 'mainnet-beta') return;
 
     setProgramId(initial.programId);
     setMode(initial.mode);
     setCluster(initial.cluster);
-    if (initial.programId) {
+    if (initial.programIdValid) {
       void search({ cluster: initial.cluster, id: initial.programId, mode: initial.mode });
     }
-    // Mount-only: deep-link rehydration should run exactly once; later
-    // re-runs would either no-op or fight the user's in-progress edits.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [search]);
 
   const totalHistoryIdls = historyData ? historyData.pmp.length + historyData.anchor.length : 0;
 
