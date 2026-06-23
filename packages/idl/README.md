@@ -11,7 +11,7 @@ Fetch and reconstruct Solana program IDLs from on-chain accounts. Supports both 
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
 | **npm package** `@solana/idl`            | Import in Node services and tools                                               |
 | **CLI** `idl`                            | Same logic from the terminal — bare IDL, `--latest`, `--history`, or `--buffer` |
-| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl-one.vercel.app                  |
+| **Web + HTTP API** (`web/` in this repo) | Hosted UI + JSON endpoints; live at https://idl.solana.com                      |
 
 ## Install
 
