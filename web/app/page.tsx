@@ -1,16 +1,50 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 
 type SearchMode = 'current' | 'latest' | 'history' | 'security';
 
 type Cluster = 'mainnet-beta' | 'devnet';
 
+const SEARCH_MODES: readonly SearchMode[] = ['current', 'latest', 'history', 'security'] as const;
+
 const CLUSTERS: { id: Cluster; label: string }[] = [
   { id: 'mainnet-beta', label: 'mainnet' },
   { id: 'devnet', label: 'devnet' },
 ];
+
+const CLUSTER_IDS: readonly Cluster[] = CLUSTERS.map((c) => c.id);
+
+/**
+ * Read the persisted query state from the URL — kept tiny and synchronous
+ * so the page can rehydrate from a shared link on mount without flashing
+ * the empty form first. Falls back to defaults for missing/invalid params.
+ */
+function readQueryState(search: string): { programId: string; mode: SearchMode; cluster: Cluster } {
+  const params = new URLSearchParams(search);
+  const programId = params.get('programId')?.trim() ?? '';
+  const modeRaw = params.get('mode');
+  const clusterRaw = params.get('cluster');
+  return {
+    cluster: (CLUSTER_IDS as readonly string[]).includes(clusterRaw ?? '') ? (clusterRaw as Cluster) : 'mainnet-beta',
+    mode: (SEARCH_MODES as readonly string[]).includes(modeRaw ?? '') ? (modeRaw as SearchMode) : 'current',
+    programId,
+  };
+}
+
+/**
+ * Persist the current query state to the URL with `replaceState` so the
+ * browser back button isn't polluted by intermediate states. We only do
+ * this on actual searches — typing in the input doesn't update the URL.
+ */
+function writeQueryState({ programId, mode, cluster }: { programId: string; mode: SearchMode; cluster: Cluster }) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('programId', programId);
+  url.searchParams.set('mode', mode);
+  url.searchParams.set('cluster', cluster);
+  window.history.replaceState({}, '', url);
+}
 
 type IdlVersion = {
   type: 'pmp' | 'anchor';
@@ -618,62 +652,93 @@ export default function Home() {
     setError(null);
   }, []);
 
-  const search = useCallback(async () => {
-    const id = programId.trim();
-    if (!id) return;
+  /**
+   * Run a search. Overrides let the mount effect kick off a search with the
+   * URL-derived values before React has committed the corresponding state —
+   * without them we'd race against `setProgramId` and call with `''`.
+   */
+  const search = useCallback(
+    async (overrides?: { id?: string; mode?: SearchMode; cluster?: Cluster }) => {
+      const id = (overrides?.id ?? programId).trim();
+      const m = overrides?.mode ?? mode;
+      const c = overrides?.cluster ?? cluster;
+      if (!id) return;
 
-    setLoading(true);
-    clearResults();
+      writeQueryState({ cluster: c, mode: m, programId: id });
 
-    try {
-      if (mode === 'current') {
-        const res = await fetch(
-          `/api/idl?programId=${encodeURIComponent(id)}&cluster=${cluster}`,
-        );
-        const json = (await res.json()) as CurrentIdlResponse & { error?: string };
-        if (!res.ok) {
-          setError(json.error ?? `HTTP ${res.status}`);
+      setLoading(true);
+      clearResults();
+
+      try {
+        if (m === 'current') {
+          const res = await fetch(
+            `/api/idl?programId=${encodeURIComponent(id)}&cluster=${c}`,
+          );
+          const json = (await res.json()) as CurrentIdlResponse & { error?: string };
+          if (!res.ok) {
+            setError(json.error ?? `HTTP ${res.status}`);
+          } else {
+            setCurrentData(json as CurrentIdlResponse);
+          }
+        } else if (m === 'latest') {
+          const res = await fetch(
+            `/api/latest?programId=${encodeURIComponent(id)}&cluster=${c}`,
+          );
+          const json = (await res.json()) as LatestResponse & { error?: string };
+          if (!res.ok) {
+            setError(json.error ?? `HTTP ${res.status}`);
+          } else {
+            setLatestData(json as LatestResponse);
+          }
+        } else if (m === 'security') {
+          const res = await fetch(
+            `/api/security-txt?programId=${encodeURIComponent(id)}&cluster=${c}`,
+          );
+          const json = (await res.json()) as SecurityTxtResponse & { error?: string };
+          if (!res.ok) {
+            setError(json.error ?? `HTTP ${res.status}`);
+          } else {
+            setSecurityData(json as SecurityTxtResponse);
+          }
         } else {
-          setCurrentData(json as CurrentIdlResponse);
+          const url = new URL('/api/history', window.location.origin);
+          url.searchParams.set('programId', id);
+          url.searchParams.set('cluster', c);
+          const res = await fetch(url);
+          const json = await res.json();
+          if (!res.ok) {
+            setError(json.error ?? `HTTP ${res.status}`);
+          } else {
+            setHistoryData(json as HistoryResponse);
+          }
         }
-      } else if (mode === 'latest') {
-        const res = await fetch(
-          `/api/latest?programId=${encodeURIComponent(id)}&cluster=${cluster}`,
-        );
-        const json = (await res.json()) as LatestResponse & { error?: string };
-        if (!res.ok) {
-          setError(json.error ?? `HTTP ${res.status}`);
-        } else {
-          setLatestData(json as LatestResponse);
-        }
-      } else if (mode === 'security') {
-        const res = await fetch(
-          `/api/security-txt?programId=${encodeURIComponent(id)}&cluster=${cluster}`,
-        );
-        const json = (await res.json()) as SecurityTxtResponse & { error?: string };
-        if (!res.ok) {
-          setError(json.error ?? `HTTP ${res.status}`);
-        } else {
-          setSecurityData(json as SecurityTxtResponse);
-        }
-      } else {
-        const url = new URL('/api/history', window.location.origin);
-        url.searchParams.set('programId', id);
-        url.searchParams.set('cluster', cluster);
-        const res = await fetch(url);
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error ?? `HTTP ${res.status}`);
-        } else {
-          setHistoryData(json as HistoryResponse);
-        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Request failed');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed');
-    } finally {
-      setLoading(false);
+    },
+    [programId, mode, cluster, clearResults],
+  );
+
+  // Rehydrate from URL on mount: `/?programId=...&mode=...&cluster=...` lets
+  // users share a deep link that lands directly on results. We pass values
+  // explicitly to `search` because the `setState` calls below won't be
+  // visible inside this effect's `search` closure.
+  useEffect(() => {
+    const initial = readQueryState(window.location.search);
+    if (!initial.programId && initial.mode === 'current' && initial.cluster === 'mainnet-beta') return;
+
+    setProgramId(initial.programId);
+    setMode(initial.mode);
+    setCluster(initial.cluster);
+    if (initial.programId) {
+      void search({ cluster: initial.cluster, id: initial.programId, mode: initial.mode });
     }
-  }, [programId, mode, cluster, clearResults]);
+    // Mount-only: deep-link rehydration should run exactly once; later
+    // re-runs would either no-op or fight the user's in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalHistoryIdls = historyData ? historyData.pmp.length + historyData.anchor.length : 0;
 
@@ -782,7 +847,7 @@ export default function Home() {
             />
             <button
               type="button"
-              onClick={search}
+              onClick={() => search()}
               disabled={loading || !programId.trim()}
               className="px-6 py-2.5 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
             >
