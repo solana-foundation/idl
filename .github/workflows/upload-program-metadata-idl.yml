@@ -166,7 +166,7 @@ jobs:
           if [ -f payer-keypair.json ]; then
             EXTRA+=( -p payer-keypair.json )
           fi
-          npx --yes @solana-program/program-metadata@0.5.1 write idl "$PROGRAM_ID" idl.json \
+          npx --yes @solana-program/program-metadata@0.8.1 write idl "$PROGRAM_ID" idl.json \
             -k upload-keypair.json \
             --rpc "$RPC_URL" \
             "${EXTRA[@]}"
