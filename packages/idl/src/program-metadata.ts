@@ -19,7 +19,6 @@ import {
     fetchTx,
     type Snapshot,
     type SolanaRpcClient,
-    type ParsedTx,
     type CompiledInstruction,
 } from './rpc.js';
 
@@ -322,12 +321,7 @@ export async function reconstructPmpHistory(
     for (const sigInfo of sigs) {
         if (sigInfo.err) continue;
 
-        let tx: ParsedTx | null;
-        try {
-            tx = await fetchTx(rpc, sigInfo.signature);
-        } catch {
-            continue;
-        }
+        const tx = await fetchTx(rpc, sigInfo.signature);
         if (!tx?.transaction?.message) continue;
         if (tx.meta?.err) continue;
 
