@@ -11,7 +11,6 @@ import {
     fetchTx,
     type Snapshot,
     type SolanaRpcClient,
-    type ParsedTx,
 } from './rpc.js';
 
 // ─── Instruction discriminators ──────────────────────────────────────────────
@@ -340,12 +339,7 @@ export async function reconstructAnchorHistory(rpc: SolanaRpcClient, programId: 
     for (const sigInfo of sigs) {
         if (sigInfo.err) continue;
 
-        let tx: ParsedTx | null;
-        try {
-            tx = await fetchTx(rpc, sigInfo.signature);
-        } catch {
-            continue;
-        }
+        const tx = await fetchTx(rpc, sigInfo.signature);
         if (!tx?.transaction?.message) continue;
         if (tx.meta?.err) continue;
 

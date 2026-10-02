@@ -46,21 +46,17 @@ export async function fetchAllHistories(
     const [pmpResult, anchor] = await Promise.all([
         (async () => {
             for (const lookup of lookups) {
-                try {
-                    const snaps = await reconstructPmpHistory(rpc, programId, {
-                        authority: lookup.authority,
-                        seed,
-                    });
-                    if (snaps.length > 0) {
-                        return { address: lookup.address, snapshots: snaps };
-                    }
-                } catch {
-                    // Try the next lookup.
+                const snaps = await reconstructPmpHistory(rpc, programId, {
+                    authority: lookup.authority,
+                    seed,
+                });
+                if (snaps.length > 0) {
+                    return { address: lookup.address, snapshots: snaps };
                 }
             }
             return null;
         })(),
-        reconstructAnchorHistory(rpc, programId).catch(() => [] as Snapshot[]),
+        reconstructAnchorHistory(rpc, programId),
     ]);
 
     return {
