@@ -44,6 +44,23 @@ const elf = await fetchElfSecurityTxt(rpc, programId);
 const pmp = await fetchPmpSecurityTxt(rpc, programId);
 ```
 
+### Upgrade authority
+
+`fetchProgramUpgradeAuthority` reports who can replace a program's code, the same data `solana program show` prints under `Authority` and `Last Deployed In Slot`. It reads only the account headers (one small RPC call for v2 programs, two for upgradeable ones).
+
+```ts
+import { fetchProgramUpgradeAuthority } from '@solana/security-txt';
+
+const status = await fetchProgramUpgradeAuthority(rpc, programId);
+// { loader: 'v3', authority: '…' | null, authorityKind: 'none' | 'keypair' | 'pda', lastDeployedSlot: 123n, … }
+```
+
+- `none`: immutable, nobody can change the code.
+- `keypair`: a single key can redeploy the program.
+- `pda`: off-curve address, typically a multisig vault (e.g. Squads) or another program. Check its members, threshold, and timelock separately.
+
+Returns `null` for non-programs and unsupported loaders (v4 is not supported yet).
+
 ## CLI
 
 Installing the package also drops a `security-txt` binary that wraps the same fetchers:
@@ -68,6 +85,9 @@ security-txt <program-id> --source pmp --raw > security.json
 
 # Non-canonical PMP authority (third-party uploaders)
 security-txt <program-id> --authority <auth-pubkey>
+
+# Who can replace the program code, and when it was last deployed
+security-txt <program-id> --upgrade-authority
 ```
 
 `--rpc` accepts any RPC URL, or set `RPC_URL` in the environment. If neither is provided the CLI falls back to the public mainnet endpoint (with a stderr warning — it'll rate-limit on large ELF programs, so set a private RPC for serious use). Exit code is `0` on a hit, `1` when nothing was found (or on argument errors).

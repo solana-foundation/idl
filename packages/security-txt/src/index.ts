@@ -10,14 +10,19 @@ export {
 } from './pmp-security-txt.js';
 export { fetchElfSecurityTxt } from './elf-security-txt.js';
 
+// ─── Program upgrade authority ───────────────────────────────────────────────
+export { fetchProgramUpgradeAuthority } from './program-upgrade-authority.js';
+
 // ─── Public types ────────────────────────────────────────────────────────────
 export type {
     ElfSecurityTxt,
     NeodymeSecurityTxtFields,
     PmpExtraSecurityTxtFields,
     PmpSecurityTxt,
+    ProgramUpgradeAuthority,
     SecurityTxt,
     SecurityTxtFields,
     SecurityTxtSource,
     SolanaRpcClient,
+    UpgradeAuthorityKind,
 } from './types.js';

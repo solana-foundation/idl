@@ -14,7 +14,7 @@
  *   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES…
  *
  * We inline rather than depend on it directly because the surface area we
- * use is five color helpers — well below the maintenance cost of an external
+ * use is six color helpers — well below the maintenance cost of an external
  * dep that would land in the closure of every consumer of
  * `@solana/security-txt`.
  *
@@ -70,6 +70,7 @@ const f = (open: string, close: string, replace?: string): Formatter =>
 export const bold = f('\x1b[1m', '\x1b[22m', '\x1b[22m\x1b[1m');
 export const dim = f('\x1b[2m', '\x1b[22m', '\x1b[22m\x1b[2m');
 export const red = f('\x1b[31m', '\x1b[39m');
+export const green = f('\x1b[32m', '\x1b[39m');
 export const yellow = f('\x1b[33m', '\x1b[39m');
 export const cyan = f('\x1b[36m', '\x1b[39m');
 
@@ -77,5 +78,5 @@ export const cyan = f('\x1b[36m', '\x1b[39m');
  * Default export shaped like `import pc from 'picocolors'` so callers can
  * keep their existing `pc.bold(...)` etc. invocations without refactoring.
  */
-const colors = { bold, cyan, dim, isColorSupported, red, yellow };
+const colors = { bold, cyan, dim, green, isColorSupported, red, yellow };
 export default colors;

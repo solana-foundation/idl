@@ -131,3 +131,28 @@ export type SecurityTxt = {
     content: string;
     fields: SecurityTxtFields;
 };
+
+/**
+ * What kind of account holds a program's upgrade authority:
+ *
+ *   - `none`: no authority; the program is immutable.
+ *   - `keypair`: an on-curve address — a single private key can redeploy
+ *     the program.
+ *   - `pda`: an off-curve address — typically a multisig vault (e.g.
+ *     Squads) or another program. Inspect it to learn the actual policy.
+ */
+export type UpgradeAuthorityKind = 'none' | 'keypair' | 'pda';
+
+/** Result of {@link fetchProgramUpgradeAuthority}. */
+export type ProgramUpgradeAuthority = {
+    programId: Address;
+    /** BPF loader that owns the program: `v2` (non-upgradeable) or `v3` (upgradeable). */
+    loader: 'v2' | 'v3';
+    /** `ProgramData` account holding the ELF and upgrade authority (null for v2). */
+    programDataAddress: Address | null;
+    /** Address allowed to redeploy the program (null = immutable). */
+    authority: Address | null;
+    authorityKind: UpgradeAuthorityKind;
+    /** Slot of the most recent deploy or upgrade (null for v2). */
+    lastDeployedSlot: bigint | null;
+};

@@ -10,7 +10,14 @@ import pc from './colors.js';
 import { fetchSecurityTxt } from './current-security-txt.js';
 import { fetchElfSecurityTxt } from './elf-security-txt.js';
 import { fetchPmpSecurityTxt } from './pmp-security-txt.js';
-import type { ElfSecurityTxt, PmpSecurityTxt, SecurityTxt, SecurityTxtFields } from './types.js';
+import { fetchProgramUpgradeAuthority } from './program-upgrade-authority.js';
+import type {
+    ElfSecurityTxt,
+    PmpSecurityTxt,
+    ProgramUpgradeAuthority,
+    SecurityTxt,
+    SecurityTxtFields,
+} from './types.js';
 
 const PKG_VERSION: string = (() => {
     try {
@@ -58,6 +65,24 @@ function printElfText(result: ElfSecurityTxt): void {
 function printResolvedText(result: SecurityTxt): void {
     console.log(pc.bold(`security.txt`) + pc.dim(`  (source: ${result.type})`));
     printFields(result.fields, '  ');
+}
+
+function printUpgradeAuthorityText(result: ProgramUpgradeAuthority): void {
+    console.log(pc.bold(`upgrade authority`));
+    console.log(
+        `  ${pc.dim('loader:')}        ${result.loader === 'v3' ? 'v3 (upgradeable)' : 'v2 (non-upgradeable)'}`,
+    );
+    if (result.programDataAddress) console.log(`  ${pc.dim('program data:')}  ${result.programDataAddress}`);
+    if (result.authority === null) {
+        console.log(`  ${pc.dim('authority:')}     ${pc.green('none (immutable)')}`);
+    } else {
+        const kind =
+            result.authorityKind === 'pda'
+                ? pc.yellow('pda: multisig or program, check its members, threshold, and timelock')
+                : pc.red('keypair: a single key can replace this program');
+        console.log(`  ${pc.dim('authority:')}     ${result.authority} (${kind})`);
+    }
+    if (result.lastDeployedSlot !== null) console.log(`  ${pc.dim('last deployed:')} slot ${result.lastDeployedSlot}`);
 }
 
 // ─── Modes ───────────────────────────────────────────────────────────────────
@@ -147,6 +172,30 @@ async function runElfOnly(
     return 0;
 }
 
+async function runUpgradeAuthority(
+    rpc: ReturnType<typeof createSolanaRpc>,
+    addr: Address,
+    format: Format,
+): Promise<number> {
+    const result = await fetchProgramUpgradeAuthority(rpc, addr);
+    if (!result) {
+        console.error(
+            pc.red(
+                'Not a program owned by a supported loader (v2 or upgradeable v3), or its ProgramData is missing (closed?).',
+            ),
+        );
+        return 1;
+    }
+
+    if (format === 'json') {
+        console.log(JSON.stringify(result, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
+        return 0;
+    }
+
+    printUpgradeAuthorityText(result);
+    return 0;
+}
+
 /**
  * --source both: report both sources independently. Exit 0 if AT LEAST ONE
  * source returned a result (so scripts can `security-txt … --source both ||
@@ -227,7 +276,8 @@ export function buildProgram(options: RunCliOptions = {}): Command {
                 'Default: the resolved security.txt (PMP first, then ELF). ' +
                 'Use --source pmp or --source elf to pick a specific source, ' +
                 'or --source both to report both side-by-side. ' +
-                '--raw prints the raw on-chain bytes; --format json prints structured output for scripting.',
+                '--raw prints the raw on-chain bytes; --format json prints structured output for scripting. ' +
+                '--upgrade-authority reports who can replace the program code instead.',
         )
         .version(PKG_VERSION)
         .argument('<program-id>', 'Program address')
@@ -239,6 +289,10 @@ export function buildProgram(options: RunCliOptions = {}): Command {
         .option('-a, --authority <address>', 'Non-canonical PMP authority (only meaningful with PMP)')
         .option('-f, --format <format>', 'Output format: "text" or "json"', 'text')
         .option('--raw', 'Print the raw on-chain content instead of parsed fields (incompatible with --source both)')
+        .option(
+            '--upgrade-authority',
+            'Report the program upgrade authority and last deploy slot instead of security.txt',
+        )
         .action(async (programAddress: string, opts) => {
             const rpcUrl = resolveRpcUrl(opts.rpc);
 
@@ -272,12 +326,21 @@ export function buildProgram(options: RunCliOptions = {}): Command {
                 process.exit(1);
             }
 
+            const upgradeAuthority: boolean = Boolean(opts.upgradeAuthority);
+            if (upgradeAuthority && (source !== undefined || raw || authority)) {
+                console.error(
+                    pc.red('Error: --upgrade-authority cannot be combined with --source, --raw, or --authority.'),
+                );
+                process.exit(1);
+            }
+
             const rpc = rpcFactory(rpcUrl);
             const addr = programAddress as Address;
 
             let exitCode: number;
             try {
-                if (source === 'pmp') exitCode = await runPmpOnly(rpc, addr, authority, format, raw);
+                if (upgradeAuthority) exitCode = await runUpgradeAuthority(rpc, addr, format);
+                else if (source === 'pmp') exitCode = await runPmpOnly(rpc, addr, authority, format, raw);
                 else if (source === 'elf') exitCode = await runElfOnly(rpc, addr, format, raw);
                 else if (source === 'both') exitCode = await runBoth(rpc, addr, authority, format);
                 else exitCode = await runDefault(rpc, addr, authority, format, raw);

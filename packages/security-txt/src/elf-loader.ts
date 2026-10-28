@@ -10,8 +10,8 @@ import type { SolanaRpcClient } from './types.js';
  * address) and the `ProgramData` variant (carries the actual ELF after a
  * fixed header).
  */
-const STATE_PROGRAM = 2;
-const STATE_PROGRAM_DATA = 3;
+export const STATE_PROGRAM = 2;
+export const STATE_PROGRAM_DATA = 3;
 
 /**
  * Borsh layout of `UpgradeableLoaderState::ProgramData`:
@@ -24,10 +24,10 @@ const STATE_PROGRAM_DATA = 3;
  * So the ELF starts at byte 13 when there's no authority, or byte 45 when
  * there is one. The 1-byte option tag at offset 12 tells us which.
  */
-const PROGRAM_DATA_HEADER_NO_AUTH = 13;
-const PROGRAM_DATA_HEADER_WITH_AUTH = 45;
+export const PROGRAM_DATA_HEADER_NO_AUTH = 13;
+export const PROGRAM_DATA_HEADER_WITH_AUTH = 45;
 
-const LOADER_V2_PROGRAM_ADDRESS = address('BPFLoader2111111111111111111111111111111111');
+export const LOADER_V2_PROGRAM_ADDRESS = address('BPFLoader2111111111111111111111111111111111');
 
 const U32_DECODER = getU32Decoder();
 const ADDRESS_DECODER = getAddressDecoder();
