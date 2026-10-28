@@ -1,5 +1,5 @@
-import { LOADER_V2_PROGRAM_ADDRESS, LOADER_V3_PROGRAM_ADDRESS } from '@solana-program/program-metadata';
-import { type Address, fetchEncodedAccount, getAddressDecoder, getU32Decoder } from '@solana/kit';
+import { LOADER_V3_PROGRAM_ADDRESS } from '@solana-program/program-metadata';
+import { address, type Address, fetchEncodedAccount, getAddressDecoder, getU32Decoder } from '@solana/kit';
 
 import type { SolanaRpcClient } from './types.js';
 
@@ -26,6 +26,8 @@ const STATE_PROGRAM_DATA = 3;
  */
 const PROGRAM_DATA_HEADER_NO_AUTH = 13;
 const PROGRAM_DATA_HEADER_WITH_AUTH = 45;
+
+const LOADER_V2_PROGRAM_ADDRESS = address('BPFLoader2111111111111111111111111111111111');
 
 const U32_DECODER = getU32Decoder();
 const ADDRESS_DECODER = getAddressDecoder();
