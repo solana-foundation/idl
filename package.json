@@ -25,16 +25,16 @@
     "devDependencies": {
         "@solana-config/oxc": "^0.1.1",
         "@types/node": "^22.0.0",
-        "oxfmt": "^0.50.0",
+        "oxfmt": "^0.74.0",
         "oxlint": "^1.65.0",
-        "oxlint-tsgolint": "^0.22.1",
+        "oxlint-tsgolint": "^7.0.2005",
         "tsup": "^9.0.0",
         "tsx": "^4.20.0",
         "typescript": "^5.7.0",
         "vitest": "^4.1.12"
     },
     "engines": {
-        "node": ">=20"
+        "node": "^22.18.0 || >=24.11.0"
     },
     "packageManager": "pnpm@10.4.1",
     "pnpm": {

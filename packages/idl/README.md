@@ -26,7 +26,6 @@ pnpm add @solana/idl @solana/kit
 ## Library
 
 ```ts
-import { createSolanaRpc, address } from '@solana/kit';
 import {
     fetchIdl,
     fetchIdlWrapped,
@@ -35,6 +34,7 @@ import {
     fetchAllHistories,
     fetchIdlFromBuffer,
 } from '@solana/idl';
+import { createSolanaRpc, address } from '@solana/kit';
 
 const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
 const programId = address('BUYuxRfhCMWavaUWxhGtPP3ksKEDZxCD5gzknk3JfAya');
