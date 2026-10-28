@@ -44,6 +44,8 @@ on:
           - devnet
         default: mainnet-beta
 
+permissions: {}
+
 jobs:
   plan:
     runs-on: ubuntu-latest
