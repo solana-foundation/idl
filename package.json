@@ -28,13 +28,19 @@
         "oxfmt": "^0.50.0",
         "oxlint": "^1.65.0",
         "oxlint-tsgolint": "^0.22.1",
-        "tsup": "^8.5.1",
+        "tsup": "^9.0.0",
         "tsx": "^4.20.0",
         "typescript": "^5.7.0",
-        "vitest": "^3.0.0"
+        "vitest": "^4.1.12"
     },
     "engines": {
         "node": ">=20"
     },
-    "packageManager": "pnpm@10.4.1"
+    "packageManager": "pnpm@10.4.1",
+    "pnpm": {
+        "overrides": {
+            "postcss": "^8.5.32",
+            "vite": "^7.3.7"
+        }
+    }
 }
